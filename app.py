@@ -690,14 +690,14 @@ def serve_frontend():
 
 # ==================== INITIALIZATION ====================
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        logger.info("Database initialized")
+# Create tables on startup — runs under both `python app.py` and `gunicorn`
+with app.app_context():
+    db.create_all()
+    logger.info("✅ Database tables created/verified")
 
-        # Run Flask app
-        app.run(
-            host='0.0.0.0',
-            port=int(os.getenv('PORT', 5000)),
-            debug=os.getenv('FLASK_ENV', 'production') == 'development'
-        )
+if __name__ == '__main__':
+    app.run(
+        host='0.0.0.0',
+        port=int(os.getenv('PORT', 5000)),
+        debug=os.getenv('FLASK_ENV', 'production') == 'development'
+    )
