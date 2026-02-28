@@ -4,7 +4,7 @@ Flask-CORS==4.0.0
 Flask-SQLAlchemy==3.0.5
 SQLAlchemy==2.0.21
 python-dotenv==1.0.0
-requests==2.31.0
+requests==2.32.4
 PyJWT==2.8.1
 schedule==1.2.0
 kiteconnect==3.9.8
