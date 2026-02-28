@@ -1,0 +1,20 @@
+# Production requirements
+Flask==2.3.3
+Flask-CORS==4.0.0
+Flask-SQLAlchemy==3.0.5
+SQLAlchemy==2.0.21
+python-dotenv==1.0.0
+requests==2.31.0
+PyJWT==2.8.1
+schedule==1.2.0
+kiteconnect==3.9.8
+Werkzeug==2.3.7
+gunicorn==21.2.0
+
+# Development tools (optional)
+# Uncomment if developing locally
+# pytest==7.4.2
+# pytest-cov==4.1.0
+# black==23.9.1
+# flake8==6.1.0
+# pylint==2.18.0
