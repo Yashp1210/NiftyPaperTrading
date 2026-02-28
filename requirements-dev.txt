@@ -9,7 +9,7 @@ PyJWT==2.8.1
 schedule==1.2.0
 kiteconnect==3.9.8
 Werkzeug==2.3.7
-gunicorn==21.2.0
+gunicorn==22.0.0
 
 # Development tools (optional)
 # Uncomment if developing locally

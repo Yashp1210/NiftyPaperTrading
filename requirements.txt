@@ -8,5 +8,5 @@ PyJWT==2.8.0
 schedule==1.2.0
 kiteconnect==5.0.1
 Werkzeug==2.3.7
-gunicorn==21.2.0
+gunicorn==22.0.0
 python-dotenv==1.0.0
