@@ -1,7 +1,7 @@
 """
 Nifty 50 Paper Trading System - Flask Backend
 Automated signal detection + paper trade journal + Telegram alerts
-Zerodha OAuth 2.0 Compatible
+Zerodha OAuth 2.0 Compatible with DEBUG LOGGING
 Author: Yash Patel | GitHub: Yashp1210
 """
 
@@ -21,6 +21,8 @@ import sqlite3
 from kiteconnect import KiteConnect
 import logging
 from urllib.parse import urlencode
+import hashlib
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -37,9 +39,23 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 CORS(app, supports_credentials=True)
 db = SQLAlchemy(app)
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
+# Logging setup - VERBOSE DEBUG
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Log startup configuration
+logger.info("=" * 100)
+logger.info("🚀 NIFTY PAPER TRADING STARTUP - DEBUG MODE")
+logger.info("=" * 100)
+logger.info(f"KITE_API_KEY configured: {bool(os.getenv('KITE_API_KEY'))}")
+logger.info(f"KITE_API_SECRET configured: {bool(os.getenv('KITE_API_SECRET'))}")
+logger.info(f"KITE_REDIRECT_URL: {os.getenv('KITE_REDIRECT_URL')}")
+logger.info(f"KITE_LOGIN_URL: https://kite.zerodha.com/connect/login")
+logger.info(f"KITE_TOKEN_URL: https://api.kite.trade/session/token")
+logger.info("=" * 100)
 
 # Configuration - Zerodha OAuth
 KITE_API_KEY = os.getenv('KITE_API_KEY', '')
@@ -155,36 +171,68 @@ def token_required(f):
 def login():
     """Initiate Zerodha OAuth login"""
     try:
+        logger.info("=" * 100)
+        logger.info("🔐 /login ENDPOINT CALLED")
+        logger.info("=" * 100)
+
+        if not KITE_API_KEY:
+            logger.error("❌ KITE_API_KEY not configured!")
+            return "ERROR: KITE_API_KEY not set in environment", 500
+
+        logger.info(f"✅ KITE_API_KEY: {KITE_API_KEY[:10]}...")
+        logger.info(f"✅ KITE_REDIRECT_URL: {KITE_REDIRECT_URL}")
+
         params = {
             'v': '3',
             'client_id': KITE_API_KEY,
             'redirect_uri': KITE_REDIRECT_URL
         }
         login_url = f"{KITE_LOGIN_URL}?{urlencode(params)}"
+        logger.info(f"✅ Redirecting to: {login_url[:80]}...")
+        logger.info("=" * 100)
+
         return redirect(login_url)
     except Exception as e:
-        logger.error(f"Login redirect error: {e}")
+        logger.error(f"❌ Login error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Login failed'}), 400
 
 @app.route('/callback', methods=['GET'])
 def oauth_callback():
     """Handle Zerodha OAuth callback"""
     try:
+        logger.info("=" * 100)
+        logger.info("🔄 /callback ENDPOINT CALLED")
+        logger.info("=" * 100)
+
+        # Log all query parameters
+        logger.info(f"📋 Query Parameters: {dict(request.args)}")
+        logger.info(f"📋 Request URL: {request.url}")
+        logger.info(f"📋 Request Method: {request.method}")
+
         request_token = request.args.get('request_token')
+        logger.info(f"📌 request_token from URL: {request_token[:30] if request_token else 'MISSING'}...")
 
         if not request_token:
-            logger.error("Missing request token in callback")
+            logger.error("❌ Missing request_token in callback")
+            logger.info("=" * 100)
             return jsonify({'error': 'Missing request token'}), 400
 
-        logger.info(f"OAuth callback received with request_token: {request_token[:10]}...")
+        logger.info(f"✅ request_token received: {request_token[:20]}...")
+
+        # Log API credentials
+        logger.info(f"🔐 Checking API credentials...")
+        logger.info(f"  KITE_API_KEY is set: {bool(KITE_API_KEY)}")
+        logger.info(f"  KITE_API_KEY value: {KITE_API_KEY if KITE_API_KEY else 'EMPTY'}")
+        logger.info(f"  KITE_API_SECRET is set: {bool(KITE_API_SECRET)}")
+        logger.info(f"  KITE_API_SECRET value: {KITE_API_SECRET[:10] if KITE_API_SECRET else 'EMPTY'}...")
 
         # Exchange request token for access token
         # Checksum = SHA256(api_key + request_token + api_secret)
-        import hashlib
+        logger.info(f"🔐 Calculating checksum...")
         checksum_string = f"{KITE_API_KEY}{request_token}{KITE_API_SECRET}"
         checksum = hashlib.sha256(checksum_string.encode()).hexdigest()
-
-        logger.info(f"Attempting token exchange with API Key: {KITE_API_KEY[:5]}...")
+        logger.info(f"✅ Checksum calculated: {checksum[:20]}...")
 
         payload = {
             'api_key': KITE_API_KEY,
@@ -192,16 +240,17 @@ def oauth_callback():
             'checksum': checksum
         }
 
-        logger.info(f"Posting to {KITE_TOKEN_URL} with payload keys: {list(payload.keys())}")
+        logger.info(f"📤 Payload details:")
+        logger.info(f"  api_key: {payload['api_key'][:15] if payload['api_key'] else 'EMPTY'}...")
+        logger.info(f"  request_token: {payload['request_token'][:20]}...")
+        logger.info(f"  checksum: {payload['checksum'][:20]}...")
 
-        logger.info(f"DEBUG: Payload being sent: {payload}")
-        logger.info(f"DEBUG: API Key type: {type(KITE_API_KEY)}, value: '{KITE_API_KEY}'")
-        logger.info(f"DEBUG: API Secret type: {type(KITE_API_SECRET)}, value: '{KITE_API_SECRET}'")
+        logger.info(f"🌐 POSTing to: {KITE_TOKEN_URL}")
+        response = requests.post(KITE_TOKEN_URL, data=payload, timeout=10)
 
-        response = requests.post(KITE_TOKEN_URL, data=payload)
-
-        logger.info(f"Token exchange response status: {response.status_code}")
-        logger.info(f"Token exchange response: {response.text}")
+        logger.info(f"📥 Response status code: {response.status_code}")
+        logger.info(f"📥 Response headers: {dict(response.headers)}")
+        logger.info(f"📥 Response body: {response.text}")
 
         if response.status_code != 200:
             try:
@@ -212,8 +261,8 @@ def oauth_callback():
                 error_msg = response.text
                 error_type = 'ParseError'
 
-            logger.error(f"Token exchange failed: {error_type} - {error_msg}")
-            logger.error(f"Full response: {response.text}")
+            logger.error(f"❌ Token exchange failed: {error_type} - {error_msg}")
+            logger.info("=" * 100)
             return f'''
             <html><body style="font-family: Arial;">
             <h2>❌ OAuth Error: {error_type}</h2>
@@ -233,9 +282,11 @@ def oauth_callback():
 
         try:
             data = response.json()
+            logger.info(f"✅ Response parsed as JSON")
         except Exception as e:
-            logger.error(f"Failed to parse response JSON: {e}")
-            logger.error(f"Raw response: {response.text}")
+            logger.error(f"❌ Failed to parse response JSON: {e}")
+            logger.error(f"❌ Raw response: {response.text}")
+            logger.info("=" * 100)
             return f'''
             <html><body>
             <h2>❌ Error: Invalid Response</h2>
@@ -246,7 +297,8 @@ def oauth_callback():
             ''', 400
 
         if not data.get('data'):
-            logger.error(f"Invalid token response: {data}")
+            logger.error(f"❌ Invalid token response: {data}")
+            logger.info("=" * 100)
             return f'''
             <html><body>
             <h2>❌ Error: Invalid Response Structure</h2>
@@ -260,20 +312,28 @@ def oauth_callback():
         user_name = data['data'].get('user_name', '')
         email = data['data'].get('email', '')
 
+        logger.info(f"✅ Extracted access_token: {access_token[:20] if access_token else 'MISSING'}...")
+        logger.info(f"✅ Extracted user_id: {user_id}")
+        logger.info(f"✅ Extracted user_name: {user_name}")
+        logger.info(f"✅ Extracted email: {email}")
+
         if not access_token or not user_id:
-            logger.error(f"Missing access_token or user_id in response: {data}")
+            logger.error(f"❌ Missing critical data - token: {bool(access_token)}, user_id: {bool(user_id)}")
+            logger.info("=" * 100)
             return jsonify({'error': 'Missing access_token or user_id'}), 400
 
-        logger.info(f"Token exchange successful for user: {user_id}")
+        logger.info(f"✅ Token exchange successful!")
 
         # Store/update user session
+        logger.info(f"💾 Saving to database...")
         user_session = UserSession.query.filter_by(user_id=user_id).first()
 
         if user_session:
+            logger.info(f"✅ Updating existing session for user: {user_id}")
             user_session.kite_access_token = access_token
             user_session.last_login = datetime.utcnow()
-            logger.info(f"Updated existing user session: {user_id}")
         else:
+            logger.info(f"✅ Creating new session for user: {user_id}")
             user_session = UserSession(
                 user_id=user_id,
                 kite_user_id=user_id,
@@ -282,27 +342,33 @@ def oauth_callback():
                 email=email,
                 token_expires_at=datetime.utcnow() + timedelta(hours=24)
             )
-            logger.info(f"Created new user session: {user_id}")
 
         db.session.add(user_session)
         db.session.commit()
+        logger.info(f"✅ User session saved to database")
 
         # Generate JWT token
+        logger.info(f"🔑 Generating JWT token...")
         jwt_token = jwt.encode({
             'user_id': user_id,
             'user_name': user_name,
             'exp': datetime.utcnow() + timedelta(hours=24)
         }, app.config['SECRET_KEY'], algorithm='HS256')
+        logger.info(f"✅ JWT token generated")
 
         # Redirect to frontend with token
         frontend_url = os.getenv('FRONTEND_URL', 'https://niftypapertrading.onrender.com')
         redirect_url = f"{frontend_url}?token={jwt_token}&user_id={user_id}&user_name={user_name}"
 
-        logger.info(f"OAuth callback successful. Redirecting to: {frontend_url}")
+        logger.info(f"✅ Redirecting to: {frontend_url}")
+        logger.info("=" * 100)
+
         return redirect(redirect_url)
 
     except Exception as e:
-        logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
+        logger.error(f"❌ OAuth callback error: {str(e)}")
+        logger.error(traceback.format_exc())
+        logger.info("=" * 100)
         return jsonify({'error': f'Callback processing failed: {str(e)}'}), 500
 
 @app.route('/api/logout', methods=['POST'])
