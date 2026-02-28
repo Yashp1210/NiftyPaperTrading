@@ -173,12 +173,18 @@ def oauth_callback():
         request_token = request.args.get('request_token')
 
         if not request_token:
+            logger.error("Missing request token in callback")
             return jsonify({'error': 'Missing request token'}), 400
 
+        logger.info(f"OAuth callback received with request_token: {request_token[:10]}...")
+
         # Exchange request token for access token
-        checksum = f"{KITE_API_KEY}{request_token}{KITE_API_SECRET}"
+        # Checksum = SHA256(api_key + request_token + api_secret)
         import hashlib
-        checksum = hashlib.sha256(checksum.encode()).hexdigest()
+        checksum_string = f"{KITE_API_KEY}{request_token}{KITE_API_SECRET}"
+        checksum = hashlib.sha256(checksum_string.encode()).hexdigest()
+
+        logger.info(f"Attempting token exchange with API Key: {KITE_API_KEY[:5]}...")
 
         payload = {
             'api_key': KITE_API_KEY,
@@ -186,20 +192,34 @@ def oauth_callback():
             'checksum': checksum
         }
 
-        response = requests.post(f"{KITE_TOKEN_URL}", data=payload)
+        logger.info(f"Posting to {KITE_TOKEN_URL} with payload keys: {list(payload.keys())}")
+
+        response = requests.post(KITE_TOKEN_URL, data=payload)
+
+        logger.info(f"Token exchange response status: {response.status_code}")
+        logger.info(f"Token exchange response: {response.text[:200]}")
 
         if response.status_code != 200:
-            return jsonify({'error': 'Token exchange failed'}), 400
+            error_msg = response.json().get('message', 'Unknown error') if response.text else 'No response'
+            logger.error(f"Token exchange failed: {error_msg}")
+            return jsonify({'error': f'Token exchange failed: {error_msg}'}), 400
 
         data = response.json()
 
         if not data.get('data'):
-            return jsonify({'error': 'Invalid token response'}), 400
+            logger.error(f"Invalid token response: {data}")
+            return jsonify({'error': 'Invalid token response', 'details': str(data)}), 400
 
-        access_token = data['data']['access_token']
-        user_id = data['data']['user_id']
+        access_token = data['data'].get('access_token')
+        user_id = data['data'].get('user_id')
         user_name = data['data'].get('user_name', '')
         email = data['data'].get('email', '')
+
+        if not access_token or not user_id:
+            logger.error(f"Missing access_token or user_id in response: {data}")
+            return jsonify({'error': 'Missing access_token or user_id'}), 400
+
+        logger.info(f"Token exchange successful for user: {user_id}")
 
         # Store/update user session
         user_session = UserSession.query.filter_by(user_id=user_id).first()
@@ -207,6 +227,7 @@ def oauth_callback():
         if user_session:
             user_session.kite_access_token = access_token
             user_session.last_login = datetime.utcnow()
+            logger.info(f"Updated existing user session: {user_id}")
         else:
             user_session = UserSession(
                 user_id=user_id,
@@ -216,6 +237,7 @@ def oauth_callback():
                 email=email,
                 token_expires_at=datetime.utcnow() + timedelta(hours=24)
             )
+            logger.info(f"Created new user session: {user_id}")
 
         db.session.add(user_session)
         db.session.commit()
@@ -228,12 +250,15 @@ def oauth_callback():
         }, app.config['SECRET_KEY'], algorithm='HS256')
 
         # Redirect to frontend with token
-        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-        return redirect(f"{frontend_url}?token={jwt_token}&user_id={user_id}")
+        frontend_url = os.getenv('FRONTEND_URL', 'https://niftypapertrading.onrender.com')
+        redirect_url = f"{frontend_url}?token={jwt_token}&user_id={user_id}&user_name={user_name}"
+
+        logger.info(f"OAuth callback successful. Redirecting to: {frontend_url}")
+        return redirect(redirect_url)
 
     except Exception as e:
-        logger.error(f"OAuth callback error: {e}")
-        return jsonify({'error': 'Callback processing failed'}), 500
+        logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Callback processing failed: {str(e)}'}), 500
 
 @app.route('/api/logout', methods=['POST'])
 @token_required
