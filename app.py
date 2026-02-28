@@ -194,21 +194,66 @@ def oauth_callback():
 
         logger.info(f"Posting to {KITE_TOKEN_URL} with payload keys: {list(payload.keys())}")
 
+        logger.info(f"DEBUG: Payload being sent: {payload}")
+        logger.info(f"DEBUG: API Key type: {type(KITE_API_KEY)}, value: '{KITE_API_KEY}'")
+        logger.info(f"DEBUG: API Secret type: {type(KITE_API_SECRET)}, value: '{KITE_API_SECRET}'")
+
         response = requests.post(KITE_TOKEN_URL, data=payload)
 
         logger.info(f"Token exchange response status: {response.status_code}")
-        logger.info(f"Token exchange response: {response.text[:200]}")
+        logger.info(f"Token exchange response: {response.text}")
 
         if response.status_code != 200:
-            error_msg = response.json().get('message', 'Unknown error') if response.text else 'No response'
-            logger.error(f"Token exchange failed: {error_msg}")
-            return jsonify({'error': f'Token exchange failed: {error_msg}'}), 400
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('message', 'Unknown error')
+                error_type = error_data.get('error_type', 'Error')
+            except:
+                error_msg = response.text
+                error_type = 'ParseError'
 
-        data = response.json()
+            logger.error(f"Token exchange failed: {error_type} - {error_msg}")
+            logger.error(f"Full response: {response.text}")
+            return f'''
+            <html><body style="font-family: Arial;">
+            <h2>❌ OAuth Error: {error_type}</h2>
+            <p><strong>Message:</strong> {error_msg}</p>
+            <p><strong>Status Code:</strong> {response.status_code}</p>
+            <p><strong>Full Response:</strong></p>
+            <pre>{response.text}</pre>
+            <p><strong>Debug Info:</strong></p>
+            <ul>
+                <li>KITE_TOKEN_URL: {KITE_TOKEN_URL}</li>
+                <li>Payload keys: {list(payload.keys())}</li>
+                <li>Request token: {request_token[:20]}...</li>
+            </ul>
+            <a href="/">← Back to Login</a>
+            </body></html>
+            ''', 400
+
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error(f"Failed to parse response JSON: {e}")
+            logger.error(f"Raw response: {response.text}")
+            return f'''
+            <html><body>
+            <h2>❌ Error: Invalid Response</h2>
+            <p>Could not parse Zerodha response</p>
+            <pre>{response.text}</pre>
+            <a href="/">← Back to Login</a>
+            </body></html>
+            ''', 400
 
         if not data.get('data'):
             logger.error(f"Invalid token response: {data}")
-            return jsonify({'error': 'Invalid token response', 'details': str(data)}), 400
+            return f'''
+            <html><body>
+            <h2>❌ Error: Invalid Response Structure</h2>
+            <p>Response: {str(data)}</p>
+            <a href="/">← Back to Login</a>
+            </body></html>
+            ''', 400
 
         access_token = data['data'].get('access_token')
         user_id = data['data'].get('user_id')
