@@ -431,6 +431,265 @@ def send_telegram_alert(user_id, message):
         logger.error(f"Telegram send error: {e}")
         return False
 
+# ==================== BACKTESTING ENGINE ====================
+
+import calendar
+
+# NSE Holidays - known holidays, used to filter out non-trading days
+NSE_HOLIDAYS = {
+    "2024-01-22", "2024-01-26", "2024-03-25", "2024-04-09", "2024-04-11",
+    "2024-04-14", "2024-04-17", "2024-04-21", "2024-05-01", "2024-05-23",
+    "2024-06-17", "2024-07-17", "2024-08-15", "2024-10-02", "2024-10-13",
+    "2024-11-01", "2024-11-15", "2024-11-20", "2024-12-25",
+    "2025-01-26", "2025-02-26", "2025-03-14", "2025-03-31", "2025-04-10",
+    "2025-04-14", "2025-04-18", "2025-05-01", "2025-08-15", "2025-08-27",
+    "2025-10-02", "2025-10-20", "2025-10-21", "2025-11-05", "2025-12-25",
+}
+
+def get_trading_days(year, month=None, day=None):
+    """
+    Returns list of trading day strings.
+    - year + month + day  → single day (e.g. 2025, 2, 14)
+    - year + month        → full month  (e.g. 2025, 2)
+    - year only           → full year   (e.g. 2025)
+    """
+    days = []
+
+    if day and month:
+        # Single specific day
+        d = f"{year:04d}-{month:02d}-{day:02d}"
+        dt = datetime.strptime(d, "%Y-%m-%d")
+        if dt.weekday() < 5 and d not in NSE_HOLIDAYS:
+            days = [d]
+
+    elif month:
+        # Full month
+        _, last_day = calendar.monthrange(year, month)
+        for d in range(1, last_day + 1):
+            date_str = f"{year:04d}-{month:02d}-{d:02d}"
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            if dt.weekday() < 5 and date_str not in NSE_HOLIDAYS:
+                days.append(date_str)
+
+    else:
+        # Full year
+        for m in range(1, 13):
+            _, last_day = calendar.monthrange(year, m)
+            for d in range(1, last_day + 1):
+                date_str = f"{year:04d}-{m:02d}-{d:02d}"
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                if dt.weekday() < 5 and date_str not in NSE_HOLIDAYS:
+                    # Don't include future dates
+                    if dt <= datetime.now():
+                        days.append(date_str)
+
+    return days
+
+
+def get_option_historical_data(kite, strike, direction, date_str):
+    """Fetch 15-min candle data for a Nifty option for the full day"""
+    try:
+        instruments = kite.instruments("NFO")
+        token = None
+        trade_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        for inst in instruments:
+            sym = inst['tradingsymbol']
+            if (sym.startswith('NIFTY') and
+                str(strike) in sym and
+                sym.endswith(direction) and
+                inst['expiry'] >= trade_date):
+                token = inst['instrument_token']
+                logger.info(f"Found instrument: {sym} token={token}")
+                break
+
+        if not token:
+            logger.warning(f"No instrument token for {strike}{direction} on {date_str}")
+            return None
+
+        candles = kite.historical_data(
+            instrument_token=token,
+            from_date=f"{date_str} 09:15:00",
+            to_date=f"{date_str} 15:30:00",
+            interval="15minute"
+        )
+        return candles
+    except Exception as e:
+        logger.error(f"Error fetching option data {strike}{direction}: {e}")
+        return None
+
+
+def simulate_trade_outcome(option_candles, entry_premium, sl_premium, target_premium):
+    """Simulate trade candle by candle. Returns (exit_premium, exit_time, status)"""
+    if not option_candles:
+        return entry_premium, "15:30", "closed"
+
+    for candle in option_candles[1:]:
+        high = candle['high']
+        low = candle['low']
+        t = candle['date']
+        candle_time = t.strftime('%H:%M') if hasattr(t, 'strftime') else str(t)[11:16]
+
+        if low <= sl_premium:
+            return sl_premium, candle_time, "sl"
+        if high >= target_premium:
+            return target_premium, candle_time, "target"
+
+    last = option_candles[-1]
+    return round(last['close'], 1), "15:30", "closed"
+
+
+def run_backtest(user_id, kite, trading_days, period_label):
+    """
+    Core backtest engine. Works for single day, month, or year.
+    Sends Telegram alerts for every trade entry + exit.
+    """
+    results = []
+    total_pnl = 0
+    winners = 0
+    losers = 0
+    skipped = 0
+
+    logger.info(f"🔁 BACKTEST STARTED: {period_label} | {len(trading_days)} days")
+
+    send_telegram_alert(user_id, f"""📊 <b>BACKTEST STARTED</b>
+📅 Period: <b>{period_label}</b>
+📆 Trading Days: {len(trading_days)}
+Strategy: 9:15 Candle Breakout | SL 50% | Target 2x""")
+
+    for date_str in trading_days:
+        try:
+            logger.info(f"\n📅 {date_str}...")
+
+            candle = get_first_15min_candle(user_id, date_str)
+            if not candle:
+                skipped += 1
+                logger.warning(f"  No candle data, skipping")
+                continue
+
+            candle_high = candle['high']
+            candle_low = candle['low']
+            candle_open = candle.get('open', candle['close'])
+            spot_price = candle['close']
+            candle_size = candle_high - candle_low
+
+            # Filter by candle size
+            if candle_size > 350 or candle_size < 50:
+                skipped += 1
+                send_telegram_alert(user_id,
+                    f"⏭ <b>{date_str}</b> — Skipped\nCandle size {candle_size:.0f} pts (needs 50–350)")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': f'size {candle_size:.0f}'})
+                continue
+
+            # Direction: green candle = CE (bullish), red candle = PE (bearish)
+            direction = "CE" if spot_price >= candle_open else "PE"
+            strike = get_atm_strike(spot_price)
+
+            # Get real option premium or estimate
+            option_candles = get_option_historical_data(kite, strike, direction, date_str)
+            if option_candles and len(option_candles) > 0:
+                entry_premium = round(option_candles[0]['close'], 1)
+            else:
+                entry_premium = round(spot_price * 0.015, 1)
+
+            sl_premium = round(entry_premium * 0.5, 1)
+            target_premium = round(entry_premium * 2.0, 1)
+
+            # Telegram: ENTRY alert
+            send_telegram_alert(user_id, f"""
+🚨 <b>TRADE SIGNAL — {date_str}</b>
+
+📌 {"🟢 BULLISH" if direction == "CE" else "🔴 BEARISH"} | <b>NIFTY {strike} {direction}</b>
+
+💰 Buy at: <b>₹{entry_premium}</b>
+🛑 Stop Loss: <b>₹{sl_premium}</b>  (-50%)
+🎯 Target: <b>₹{target_premium}</b>  (+100%)
+
+📊 Candle: {candle_size:.0f} pts | Spot: {spot_price}
+💸 Max Loss: ₹{round((entry_premium - sl_premium) * 50):,}
+💰 Max Profit: ₹{round((target_premium - entry_premium) * 50):,}""")
+
+            # Simulate outcome
+            exit_premium, exit_time, trade_status = simulate_trade_outcome(
+                option_candles, entry_premium, sl_premium, target_premium)
+
+            pnl = round((exit_premium - entry_premium) * 50, 2)
+            total_pnl += pnl
+            if pnl > 0: winners += 1
+            else: losers += 1
+
+            # Telegram: EXIT alert
+            if trade_status == "target":
+                exit_emoji, exit_label = "🎯", "TARGET HIT ✅"
+            elif trade_status == "sl":
+                exit_emoji, exit_label = "🛑", "STOP LOSS ❌"
+            else:
+                exit_emoji, exit_label = "🕐", "CLOSED AT 3:30 PM"
+
+            send_telegram_alert(user_id, f"""
+{exit_emoji} <b>{exit_label} — {date_str}</b>
+
+NIFTY {strike} {direction}
+📥 Entry ₹{entry_premium} → 📤 Exit ₹{exit_premium}
+⏰ {exit_time}
+
+{"📈" if pnl >= 0 else "📉"} <b>P&L: ₹{pnl:+,.0f}</b>
+🏦 Running Total: ₹{total_pnl:+,.0f}""")
+
+            # Save to DB
+            trade_id = f"BT_{date_str}_{direction}"
+            if not PaperTrade.query.filter_by(trade_id=trade_id).first():
+                db.session.add(PaperTrade(
+                    trade_id=trade_id, user_id=user_id, date=date_str,
+                    strike=strike, direction=direction,
+                    entry_premium=entry_premium, entry_time="09:30:00",
+                    sl_premium=sl_premium, target_premium=target_premium,
+                    exit_premium=exit_premium, exit_time=exit_time,
+                    pnl=pnl, status=trade_status,
+                    candle_high=candle_high, candle_low=candle_low, spot_price=spot_price
+                ))
+                db.session.commit()
+
+            results.append({
+                'date': date_str, 'direction': direction, 'strike': strike,
+                'entry': entry_premium, 'sl': sl_premium, 'target': target_premium,
+                'exit': exit_premium, 'exit_time': exit_time,
+                'status': trade_status, 'pnl': pnl
+            })
+
+            logger.info(f"  {trade_status.upper()} | P&L: ₹{pnl:+.0f} | Total: ₹{total_pnl:+.0f}")
+
+        except Exception as e:
+            logger.error(f"Error on {date_str}: {e}")
+            results.append({'date': date_str, 'status': 'error', 'reason': str(e)})
+
+    # Final summary
+    total_trades = winners + losers
+    win_rate = round(winners / total_trades * 100, 1) if total_trades else 0
+    avg_win = round(sum(r['pnl'] for r in results if r.get('pnl', 0) > 0) / winners, 0) if winners else 0
+    avg_loss = round(sum(r['pnl'] for r in results if r.get('pnl', 0) < 0) / losers, 0) if losers else 0
+
+    send_telegram_alert(user_id, f"""
+📊 <b>BACKTEST COMPLETE — {period_label}</b>
+
+━━━━━━━━━━━━━━━━━━━━
+✅ Trades: {total_trades}  |  🏆 Wins: {winners}  |  ❌ Losses: {losers}
+⏭ Skipped: {skipped}
+📊 Win Rate: <b>{win_rate}%</b>
+
+💰 <b>Total P&L: ₹{total_pnl:+,.0f}</b>
+📈 Avg Win: ₹{avg_win:+,.0f}
+📉 Avg Loss: ₹{avg_loss:+,.0f}
+━━━━━━━━━━━━━━━━━━━━""")
+
+    return {
+        'period': period_label, 'total_trades': total_trades,
+        'winners': winners, 'losers': losers, 'skipped': skipped,
+        'win_rate': win_rate, 'total_pnl': round(total_pnl, 2),
+        'results': results
+    }
+
+
 # ==================== API ROUTES ====================
 
 @app.route('/api/user/profile', methods=['GET'])
@@ -667,6 +926,117 @@ def get_stats(current_user):
     except Exception as e:
         logger.error(f"Stats error: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/backtest', methods=['POST'])
+@token_required
+def run_backtest_api(current_user):
+    """
+    Dynamic backtest endpoint.
+
+    Body (JSON):
+        { "year": 2025 }                        → full year
+        { "year": 2025, "month": 1 }            → January 2025
+        { "year": 2025, "month": 1, "day": 15 } → Jan 15 only
+    """
+    try:
+        kite = get_kite_client(current_user)
+        if not kite:
+            return jsonify({'error': 'Zerodha not connected. Please login first.'}), 401
+
+        data = request.json or {}
+        year  = int(data.get('year',  datetime.now().year))
+        month = data.get('month')
+        day   = data.get('day')
+
+        # Build label and trading days list
+        if day and month:
+            month = int(month); day = int(day)
+            period_label = f"{day:02d} {calendar.month_name[month]} {year}"
+        elif month:
+            month = int(month)
+            period_label = f"{calendar.month_name[month]} {year}"
+            day = None
+        else:
+            period_label = f"Full Year {year}"
+            month = None; day = None
+
+        trading_days = get_trading_days(year, month, day)
+
+        if not trading_days:
+            return jsonify({'error': 'No trading days found for the given period'}), 400
+
+        # Run in background thread so API returns immediately
+        def backtest_thread():
+            with app.app_context():
+                run_backtest(current_user, kite, trading_days, period_label)
+
+        thread = threading.Thread(target=backtest_thread)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            'status': 'started',
+            'period': period_label,
+            'trading_days': len(trading_days),
+            'message': f'Backtest started for {period_label}! Watch Telegram for alerts.'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Backtest error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backtest/results', methods=['GET'])
+@token_required
+def get_backtest_results(current_user):
+    """
+    Get backtest results. Optional query params:
+        ?year=2025
+        ?year=2025&month=1
+        ?year=2025&month=1&day=15
+    """
+    try:
+        year  = request.args.get('year')
+        month = request.args.get('month')
+        day   = request.args.get('day')
+
+        query = PaperTrade.query.filter(
+            PaperTrade.user_id == current_user,
+            PaperTrade.trade_id.like('BT_%')
+        )
+
+        # Filter by date prefix
+        if year and month and day:
+            prefix = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+            query = query.filter(PaperTrade.date == prefix)
+        elif year and month:
+            prefix = f"{int(year):04d}-{int(month):02d}"
+            query = query.filter(PaperTrade.date.like(f"{prefix}%"))
+        elif year:
+            prefix = f"{int(year):04d}"
+            query = query.filter(PaperTrade.date.like(f"{prefix}%"))
+
+        trades = query.order_by(PaperTrade.date.asc()).all()
+
+        closed  = [t for t in trades if t.status in ['target', 'sl', 'closed']]
+        winners = [t for t in closed if t.pnl and t.pnl > 0]
+        losers  = [t for t in closed if t.pnl and t.pnl <= 0]
+        total_pnl = sum(t.pnl for t in closed if t.pnl)
+        win_rate  = round(len(winners) / len(closed) * 100, 1) if closed else 0
+
+        return jsonify({
+            'total_trades': len(closed),
+            'winners': len(winners),
+            'losers': len(losers),
+            'win_rate': win_rate,
+            'total_pnl': round(total_pnl, 2),
+            'trades': [t.to_dict() for t in trades]
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Get backtest results error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/health', methods=['GET'])
 def health():
