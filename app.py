@@ -183,9 +183,8 @@ def login():
         logger.info(f"✅ KITE_REDIRECT_URL: {KITE_REDIRECT_URL}")
 
         params = {
-            'v': '3',
-            'client_id': KITE_API_KEY,
-            'redirect_uri': KITE_REDIRECT_URL
+            'api_key': KITE_API_KEY,
+            'v': '3'
         }
         login_url = f"{KITE_LOGIN_URL}?{urlencode(params)}"
         logger.info(f"✅ Redirecting to: {login_url[:80]}...")
@@ -228,89 +227,30 @@ def oauth_callback():
         logger.info(f"  KITE_API_SECRET value: {KITE_API_SECRET[:10] if KITE_API_SECRET else 'EMPTY'}...")
 
         # Exchange request token for access token
-        # Checksum = SHA256(api_key + request_token + api_secret)
-        logger.info(f"🔐 Calculating checksum...")
-        checksum_string = f"{KITE_API_KEY}{request_token}{KITE_API_SECRET}"
-        checksum = hashlib.sha256(checksum_string.encode()).hexdigest()
-        logger.info(f"✅ Checksum calculated: {checksum[:20]}...")
+        # Exchange request token for access token using KiteConnect library
+        logger.info(f"🔐 Using KiteConnect to generate session...")
+        kite = KiteConnect(api_key=KITE_API_KEY)
 
-        payload = {
-            'api_key': KITE_API_KEY,
-            'request_token': request_token,
-            'checksum': checksum
-        }
-
-        logger.info(f"📤 Payload details:")
-        logger.info(f"  api_key: {payload['api_key'][:15] if payload['api_key'] else 'EMPTY'}...")
-        logger.info(f"  request_token: {payload['request_token'][:20]}...")
-        logger.info(f"  checksum: {payload['checksum'][:20]}...")
-
-        logger.info(f"🌐 POSTing to: {KITE_TOKEN_URL}")
-        response = requests.post(KITE_TOKEN_URL, data=payload, timeout=10)
-
-        logger.info(f"📥 Response status code: {response.status_code}")
-        logger.info(f"📥 Response headers: {dict(response.headers)}")
-        logger.info(f"📥 Response body: {response.text}")
-
-        if response.status_code != 200:
-            try:
-                error_data = response.json()
-                error_msg = error_data.get('message', 'Unknown error')
-                error_type = error_data.get('error_type', 'Error')
-            except:
-                error_msg = response.text
-                error_type = 'ParseError'
-
-            logger.error(f"❌ Token exchange failed: {error_type} - {error_msg}")
+        try:
+            session_data = kite.generate_session(request_token, api_secret=KITE_API_SECRET)
+            logger.info(f"✅ Session generated successfully")
+        except Exception as e:
+            logger.error(f"❌ generate_session failed: {e}")
             logger.info("=" * 100)
             return f'''
             <html><body style="font-family: Arial;">
-            <h2>❌ OAuth Error: {error_type}</h2>
-            <p><strong>Message:</strong> {error_msg}</p>
-            <p><strong>Status Code:</strong> {response.status_code}</p>
-            <p><strong>Full Response:</strong></p>
-            <pre>{response.text}</pre>
-            <p><strong>Debug Info:</strong></p>
-            <ul>
-                <li>KITE_TOKEN_URL: {KITE_TOKEN_URL}</li>
-                <li>Payload keys: {list(payload.keys())}</li>
-                <li>Request token: {request_token[:20]}...</li>
-            </ul>
+            <h2>❌ OAuth Error: Token Exchange Failed</h2>
+            <p><strong>Message:</strong> {str(e)}</p>
+            <p><strong>Tip:</strong> Make sure your KITE_API_KEY and KITE_API_SECRET are correct in your .env,
+            and the Redirect URL in your Kite app settings at kite.trade/apps exactly matches your server URL.</p>
             <a href="/">← Back to Login</a>
             </body></html>
             ''', 400
 
-        try:
-            data = response.json()
-            logger.info(f"✅ Response parsed as JSON")
-        except Exception as e:
-            logger.error(f"❌ Failed to parse response JSON: {e}")
-            logger.error(f"❌ Raw response: {response.text}")
-            logger.info("=" * 100)
-            return f'''
-            <html><body>
-            <h2>❌ Error: Invalid Response</h2>
-            <p>Could not parse Zerodha response</p>
-            <pre>{response.text}</pre>
-            <a href="/">← Back to Login</a>
-            </body></html>
-            ''', 400
-
-        if not data.get('data'):
-            logger.error(f"❌ Invalid token response: {data}")
-            logger.info("=" * 100)
-            return f'''
-            <html><body>
-            <h2>❌ Error: Invalid Response Structure</h2>
-            <p>Response: {str(data)}</p>
-            <a href="/">← Back to Login</a>
-            </body></html>
-            ''', 400
-
-        access_token = data['data'].get('access_token')
-        user_id = data['data'].get('user_id')
-        user_name = data['data'].get('user_name', '')
-        email = data['data'].get('email', '')
+        access_token = session_data.get('access_token')
+        user_id = session_data.get('user_id')
+        user_name = session_data.get('user_name', '')
+        email = session_data.get('email', '')
 
         logger.info(f"✅ Extracted access_token: {access_token[:20] if access_token else 'MISSING'}...")
         logger.info(f"✅ Extracted user_id: {user_id}")
