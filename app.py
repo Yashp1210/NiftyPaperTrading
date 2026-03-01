@@ -2,6 +2,7 @@
 Nifty 50 Paper Trading System - Flask Backend
 Automated signal detection + paper trade journal + Telegram alerts
 Zerodha OAuth 2.0 Compatible with DEBUG LOGGING
+UPDATED STRATEGY: Breakout Confirmation + 20 EMA Filter + Professional Risk Management
 Author: Yash Patel | GitHub: Yashp1210
 """
 
@@ -23,6 +24,7 @@ import logging
 from urllib.parse import urlencode
 import hashlib
 import traceback
+import calendar
 
 # Load environment variables
 load_dotenv()
@@ -48,13 +50,12 @@ logger = logging.getLogger(__name__)
 
 # Log startup configuration
 logger.info("=" * 100)
-logger.info("🚀 NIFTY PAPER TRADING STARTUP - DEBUG MODE")
+logger.info("🚀 NIFTY PAPER TRADING STARTUP - UPDATED STRATEGY")
 logger.info("=" * 100)
 logger.info(f"KITE_API_KEY configured: {bool(os.getenv('KITE_API_KEY'))}")
 logger.info(f"KITE_API_SECRET configured: {bool(os.getenv('KITE_API_SECRET'))}")
 logger.info(f"KITE_REDIRECT_URL: {os.getenv('KITE_REDIRECT_URL')}")
-logger.info(f"KITE_LOGIN_URL: https://kite.zerodha.com/connect/login")
-logger.info(f"KITE_TOKEN_URL: https://api.kite.trade/session/token")
+logger.info(f"Strategy: Breakout + 20 EMA + Size 70-250 + 1 Trade/Day + Exit 2:45 PM")
 logger.info("=" * 100)
 
 # Configuration - Zerodha OAuth
@@ -204,7 +205,6 @@ def oauth_callback():
         logger.info("🔄 /callback ENDPOINT CALLED")
         logger.info("=" * 100)
 
-        # Log all query parameters
         logger.info(f"📋 Query Parameters: {dict(request.args)}")
         logger.info(f"📋 Request URL: {request.url}")
         logger.info(f"📋 Request Method: {request.method}")
@@ -219,15 +219,12 @@ def oauth_callback():
 
         logger.info(f"✅ request_token received: {request_token[:20]}...")
 
-        # Log API credentials
         logger.info(f"🔐 Checking API credentials...")
         logger.info(f"  KITE_API_KEY is set: {bool(KITE_API_KEY)}")
         logger.info(f"  KITE_API_KEY value: {KITE_API_KEY if KITE_API_KEY else 'EMPTY'}")
         logger.info(f"  KITE_API_SECRET is set: {bool(KITE_API_SECRET)}")
         logger.info(f"  KITE_API_SECRET value: {KITE_API_SECRET[:10] if KITE_API_SECRET else 'EMPTY'}...")
 
-        # Exchange request token for access token
-        # Exchange request token for access token using KiteConnect library
         logger.info(f"🔐 Using KiteConnect to generate session...")
         kite = KiteConnect(api_key=KITE_API_KEY)
 
@@ -264,7 +261,6 @@ def oauth_callback():
 
         logger.info(f"✅ Token exchange successful!")
 
-        # Store/update user session
         logger.info(f"💾 Saving to database...")
         user_session = UserSession.query.filter_by(user_id=user_id).first()
 
@@ -287,7 +283,6 @@ def oauth_callback():
         db.session.commit()
         logger.info(f"✅ User session saved to database")
 
-        # Generate JWT token
         logger.info(f"🔑 Generating JWT token...")
         jwt_token = jwt.encode({
             'user_id': user_id,
@@ -296,7 +291,6 @@ def oauth_callback():
         }, app.config['SECRET_KEY'], algorithm='HS256')
         logger.info(f"✅ JWT token generated")
 
-        # Redirect to frontend with token
         frontend_url = os.getenv('FRONTEND_URL', 'https://niftypapertrading.onrender.com')
         redirect_url = f"{frontend_url}?token={jwt_token}&user_id={user_id}&user_name={user_name}"
 
@@ -392,16 +386,88 @@ def get_first_15min_candle(user_id, date_str):
         logger.error(f"Error fetching candle: {e}")
         return None
 
+def get_all_15min_candles(user_id, date_str):
+    """Fetch all 15-minute candles for the day (for 20 EMA calculation)"""
+    try:
+        kite = get_kite_client(user_id)
+        if not kite:
+            return None
+
+        candles = kite.historical_data(
+            instrument_token=256265,
+            from_date=date_str,
+            to_date=date_str,
+            interval="15minute"
+        )
+        return candles if candles else None
+    except Exception as e:
+        logger.error(f"Error fetching all candles: {e}")
+        return None
+
+def calculate_20_ema(candles):
+    """Calculate 20 EMA from candles and return current and previous value"""
+    if not candles or len(candles) < 20:
+        return None, None
+
+    closes = [c['close'] for c in candles]
+
+    # Simple moving average for first 20
+    sma = sum(closes[:20]) / 20
+    ema_prev = sma
+
+    # EMA calculation
+    multiplier = 2 / (20 + 1)
+
+    for close in closes[20:]:
+        ema = close * multiplier + ema_prev * (1 - multiplier)
+        ema_prev = ema
+
+    ema_current = ema_prev
+
+    # Get the EMA value before the last one for slope comparison
+    if len(closes) >= 21:
+        ema_prev2 = sma
+        for close in closes[20:-1]:
+            ema_prev2 = close * multiplier + ema_prev2 * (1 - multiplier)
+    else:
+        ema_prev2 = ema_current
+
+    return round(ema_current, 2), round(ema_prev2, 2)
+
+def is_ema_bullish(ema_current, ema_previous):
+    """Check if EMA trend is bullish (rising)"""
+    if ema_current is None or ema_previous is None:
+        return False
+    return ema_current > ema_previous
+
+def check_breakout(all_candles, first_candle_high, first_candle_low, direction):
+    """Check if price breaks out after 9:30 AM (first candle closes)"""
+    if not all_candles or len(all_candles) < 2:
+        return False
+
+    # Skip first candle (9:15-9:30), check rest of day
+    for candle in all_candles[1:]:
+        if direction == "CE":
+            # For bullish, check if price goes above 9:30 candle high
+            if candle['high'] >= first_candle_high:
+                return True
+        else:  # PE
+            # For bearish, check if price goes below 9:30 candle low
+            if candle['low'] <= first_candle_low:
+                return True
+
+    return False
+
 def get_atm_strike(spot):
     """Calculate ATM strike"""
     return round(spot / 50) * 50
 
 def detect_signal(candle_high, candle_low, spot_price):
-    """Detect breakout signal from 9:15-9:30 candle"""
+    """Detect signal - now candle size check is 70-250"""
     candle_size = candle_high - candle_low
 
-    if candle_size > 350 or candle_size < 50:
-        logger.info(f"Candle skipped - size: {candle_size}")
+    if candle_size > 250 or candle_size < 70:
+        logger.info(f"Candle skipped - size: {candle_size} (must be 70-250)")
         return None
 
     return None
@@ -433,9 +499,7 @@ def send_telegram_alert(user_id, message):
 
 # ==================== BACKTESTING ENGINE ====================
 
-import calendar
-
-# NSE Holidays - known holidays, used to filter out non-trading days
+# NSE Holidays
 NSE_HOLIDAYS = {
     "2024-01-22", "2024-01-26", "2024-03-25", "2024-04-09", "2024-04-11",
     "2024-04-14", "2024-04-17", "2024-04-21", "2024-05-01", "2024-05-23",
@@ -447,23 +511,16 @@ NSE_HOLIDAYS = {
 }
 
 def get_trading_days(year, month=None, day=None):
-    """
-    Returns list of trading day strings.
-    - year + month + day  → single day (e.g. 2025, 2, 14)
-    - year + month        → full month  (e.g. 2025, 2)
-    - year only           → full year   (e.g. 2025)
-    """
+    """Returns list of trading day strings"""
     days = []
 
     if day and month:
-        # Single specific day
         d = f"{year:04d}-{month:02d}-{day:02d}"
         dt = datetime.strptime(d, "%Y-%m-%d")
         if dt.weekday() < 5 and d not in NSE_HOLIDAYS:
             days = [d]
 
     elif month:
-        # Full month
         _, last_day = calendar.monthrange(year, month)
         for d in range(1, last_day + 1):
             date_str = f"{year:04d}-{month:02d}-{d:02d}"
@@ -472,22 +529,19 @@ def get_trading_days(year, month=None, day=None):
                 days.append(date_str)
 
     else:
-        # Full year
         for m in range(1, 13):
             _, last_day = calendar.monthrange(year, m)
             for d in range(1, last_day + 1):
                 date_str = f"{year:04d}-{m:02d}-{d:02d}"
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
                 if dt.weekday() < 5 and date_str not in NSE_HOLIDAYS:
-                    # Don't include future dates
                     if dt <= datetime.now():
                         days.append(date_str)
 
     return days
 
-
 def get_option_historical_data(kite, strike, direction, date_str):
-    """Fetch 15-min candle data for a Nifty option for the full day"""
+    """Fetch 15-min candle data for a Nifty option"""
     try:
         instruments = kite.instruments("NFO")
         token = None
@@ -518,9 +572,8 @@ def get_option_historical_data(kite, strike, direction, date_str):
         logger.error(f"Error fetching option data {strike}{direction}: {e}")
         return None
 
-
 def simulate_trade_outcome(option_candles, entry_premium, sl_premium, target_premium):
-    """Simulate trade candle by candle. Returns (exit_premium, exit_time, status)"""
+    """Simulate trade candle by candle. Exit at 2:45 PM (14:45)"""
     if not option_candles:
         return entry_premium, "15:30", "closed"
 
@@ -530,19 +583,30 @@ def simulate_trade_outcome(option_candles, entry_premium, sl_premium, target_pre
         t = candle['date']
         candle_time = t.strftime('%H:%M') if hasattr(t, 'strftime') else str(t)[11:16]
 
+        # Check SL first
         if low <= sl_premium:
             return sl_premium, candle_time, "sl"
+
+        # Check target
         if high >= target_premium:
             return target_premium, candle_time, "target"
 
+        # Check 2:45 PM (14:45) forced exit
+        if candle_time >= "14:45":
+            return round(candle['close'], 1), candle_time, "closed"
+
+    # If nothing hit by EOD
     last = option_candles[-1]
     return round(last['close'], 1), "15:30", "closed"
 
-
 def run_backtest(user_id, kite, trading_days, period_label):
     """
-    Core backtest engine. Works for single day, month, or year.
-    Sends Telegram alerts for every trade entry + exit.
+    Core backtest engine with NEW STRATEGY:
+    1. Breakout confirmation
+    2. 20 EMA filter
+    3. Candle size 70-250
+    4. One trade per day
+    5. Exit at 2:45 PM
     """
     results = []
     total_pnl = 0
@@ -555,12 +619,13 @@ def run_backtest(user_id, kite, trading_days, period_label):
     send_telegram_alert(user_id, f"""📊 <b>BACKTEST STARTED</b>
 📅 Period: <b>{period_label}</b>
 📆 Trading Days: {len(trading_days)}
-Strategy: 9:15 Candle Breakout | SL 50% | Target 2x""")
+Strategy: Breakout + 20 EMA | Size 70-250 | 1 Trade/Day | Exit 2:45 PM""")
 
     for date_str in trading_days:
         try:
             logger.info(f"\n📅 {date_str}...")
 
+            # STEP 1: Get first candle and check size
             candle = get_first_15min_candle(user_id, date_str)
             if not candle:
                 skipped += 1
@@ -573,43 +638,87 @@ Strategy: 9:15 Candle Breakout | SL 50% | Target 2x""")
             spot_price = candle['close']
             candle_size = candle_high - candle_low
 
-            # Filter by candle size
-            if candle_size > 350 or candle_size < 50:
+            # Size filter: 70-250 only
+            if candle_size > 250 or candle_size < 70:
                 skipped += 1
                 send_telegram_alert(user_id,
-                    f"⏭ <b>{date_str}</b> — Skipped\nCandle size {candle_size:.0f} pts (needs 50–350)")
+                    f"⏭ <b>{date_str}</b> — Skipped\nCandle size {candle_size:.0f} pts (needs 70–250)")
                 results.append({'date': date_str, 'status': 'skipped', 'reason': f'size {candle_size:.0f}'})
                 continue
 
-            # Direction: green candle = CE (bullish), red candle = PE (bearish)
-            direction = "CE" if spot_price >= candle_open else "PE"
+            # STEP 2: Get all candles and calculate 20 EMA
+            all_candles = get_all_15min_candles(user_id, date_str)
+            if not all_candles:
+                skipped += 1
+                send_telegram_alert(user_id, f"⏭ <b>{date_str}</b> — No candle data")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': 'no data'})
+                continue
+
+            ema_current, ema_previous = calculate_20_ema(all_candles)
+
+            if ema_current is None:
+                skipped += 1
+                send_telegram_alert(user_id, f"⏭ <b>{date_str}</b> — Not enough data for EMA")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': 'insufficient data'})
+                continue
+
+            # STEP 3: Determine direction and check EMA match
+            candle_is_green = spot_price >= candle_open
+            direction = "CE" if candle_is_green else "PE"
+
+            ema_is_bullish = is_ema_bullish(ema_current, ema_previous)
+
+            # Filter: CE only if EMA bullish, PE only if EMA bearish
+            if direction == "CE" and not ema_is_bullish:
+                skipped += 1
+                send_telegram_alert(user_id,
+                    f"⏭ <b>{date_str}</b> — Skipped\nCE signal but EMA is bearish (↓)")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': 'EMA mismatch'})
+                continue
+
+            if direction == "PE" and ema_is_bullish:
+                skipped += 1
+                send_telegram_alert(user_id,
+                    f"⏭ <b>{date_str}</b> — Skipped\nPE signal but EMA is bullish (↑)")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': 'EMA mismatch'})
+                continue
+
+            # STEP 4: Check breakout confirmation
+            has_breakout = check_breakout(all_candles, candle_high, candle_low, direction)
+
+            if not has_breakout:
+                skipped += 1
+                send_telegram_alert(user_id,
+                    f"⏭ <b>{date_str}</b> — Skipped\nNo breakout after 9:30 AM")
+                results.append({'date': date_str, 'status': 'skipped', 'reason': 'no breakout'})
+                continue
+
+            # STEP 5: Calculate strike and entry
             strike = get_atm_strike(spot_price)
 
-            # Get real option premium or estimate
             option_candles = get_option_historical_data(kite, strike, direction, date_str)
             if option_candles and len(option_candles) > 0:
                 entry_premium = round(option_candles[0]['close'], 1)
             else:
                 entry_premium = round(spot_price * 0.015, 1)
 
-            sl_premium = round(entry_premium * 0.5, 1)
-            target_premium = round(entry_premium * 2.0, 1)
+            # NEW: Fixed SL and Target
+            sl_premium = round(max(entry_premium - 100, 10), 1)
+            target_premium = round(entry_premium + 150, 1)
 
-            # Telegram: ENTRY alert
+            # STEP 6: Send ENTRY alert (simplified)
             send_telegram_alert(user_id, f"""
 🚨 <b>TRADE SIGNAL — {date_str}</b>
 
-📌 {"🟢 BULLISH" if direction == "CE" else "🔴 BEARISH"} | <b>NIFTY {strike} {direction}</b>
+📌 {"🟢 BUY CE" if direction == "CE" else "🔴 SELL PE"} | <b>NIFTY {strike} {direction}</b>
 
-💰 Buy at: <b>₹{entry_premium}</b>
-🛑 Stop Loss: <b>₹{sl_premium}</b>  (-50%)
-🎯 Target: <b>₹{target_premium}</b>  (+100%)
+💰 <b>BUY:</b> ₹{entry_premium}
+🛑 <b>SL:</b> ₹{sl_premium}
+🎯 <b>TARGET:</b> ₹{target_premium}
 
-📊 Candle: {candle_size:.0f} pts | Spot: {spot_price}
-💸 Max Loss: ₹{round((entry_premium - sl_premium) * 50):,}
-💰 Max Profit: ₹{round((target_premium - entry_premium) * 50):,}""")
+📊 EMA: {"↑ Bullish" if ema_is_bullish else "↓ Bearish"} | Candle: {candle_size:.0f} pts""")
 
-            # Simulate outcome
+            # STEP 7: Simulate outcome
             exit_premium, exit_time, trade_status = simulate_trade_outcome(
                 option_candles, entry_premium, sl_premium, target_premium)
 
@@ -618,23 +727,22 @@ Strategy: 9:15 Candle Breakout | SL 50% | Target 2x""")
             if pnl > 0: winners += 1
             else: losers += 1
 
-            # Telegram: EXIT alert
+            # STEP 8: Send EXIT alert
             if trade_status == "target":
                 exit_emoji, exit_label = "🎯", "TARGET HIT ✅"
             elif trade_status == "sl":
                 exit_emoji, exit_label = "🛑", "STOP LOSS ❌"
             else:
-                exit_emoji, exit_label = "🕐", "CLOSED AT 3:30 PM"
+                exit_emoji, exit_label = "🕐", "CLOSED AT 2:45 PM"
 
             send_telegram_alert(user_id, f"""
 {exit_emoji} <b>{exit_label} — {date_str}</b>
 
 NIFTY {strike} {direction}
-📥 Entry ₹{entry_premium} → 📤 Exit ₹{exit_premium}
+₹{entry_premium} → ₹{exit_premium}
 ⏰ {exit_time}
 
-{"📈" if pnl >= 0 else "📉"} <b>P&L: ₹{pnl:+,.0f}</b>
-🏦 Running Total: ₹{total_pnl:+,.0f}""")
+{"📈" if pnl >= 0 else "📉"} <b>P&L: ₹{pnl:+,.0f}</b>""")
 
             # Save to DB
             trade_id = f"BT_{date_str}_{direction}"
@@ -666,20 +774,19 @@ NIFTY {strike} {direction}
     # Final summary
     total_trades = winners + losers
     win_rate = round(winners / total_trades * 100, 1) if total_trades else 0
-    avg_win = round(sum(r['pnl'] for r in results if r.get('pnl', 0) > 0) / winners, 0) if winners else 0
-    avg_loss = round(sum(r['pnl'] for r in results if r.get('pnl', 0) < 0) / losers, 0) if losers else 0
 
     send_telegram_alert(user_id, f"""
 📊 <b>BACKTEST COMPLETE — {period_label}</b>
 
 ━━━━━━━━━━━━━━━━━━━━
-✅ Trades: {total_trades}  |  🏆 Wins: {winners}  |  ❌ Losses: {losers}
+✅ Trades: {total_trades}
+🏆 Wins: {winners}
+❌ Losses: {losers}
 ⏭ Skipped: {skipped}
+
 📊 Win Rate: <b>{win_rate}%</b>
 
-💰 <b>Total P&L: ₹{total_pnl:+,.0f}</b>
-📈 Avg Win: ₹{avg_win:+,.0f}
-📉 Avg Loss: ₹{avg_loss:+,.0f}
+💰 <b>TOTAL P&L (1 Lot): ₹{total_pnl:+,.0f}</b>
 ━━━━━━━━━━━━━━━━━━━━""")
 
     return {
@@ -688,7 +795,6 @@ NIFTY {strike} {direction}
         'win_rate': win_rate, 'total_pnl': round(total_pnl, 2),
         'results': results
     }
-
 
 # ==================== API ROUTES ====================
 
@@ -930,14 +1036,7 @@ def get_stats(current_user):
 @app.route('/api/backtest', methods=['POST'])
 @token_required
 def run_backtest_api(current_user):
-    """
-    Dynamic backtest endpoint.
-
-    Body (JSON):
-        { "year": 2025 }                        → full year
-        { "year": 2025, "month": 1 }            → January 2025
-        { "year": 2025, "month": 1, "day": 15 } → Jan 15 only
-    """
+    """Dynamic backtest endpoint"""
     try:
         kite = get_kite_client(current_user)
         if not kite:
@@ -965,7 +1064,7 @@ def run_backtest_api(current_user):
         if not trading_days:
             return jsonify({'error': 'No trading days found for the given period'}), 400
 
-        # Run in background thread so API returns immediately
+        # Run in background thread
         def backtest_thread():
             with app.app_context():
                 run_backtest(current_user, kite, trading_days, period_label)
@@ -985,16 +1084,10 @@ def run_backtest_api(current_user):
         logger.error(f"Backtest error: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/backtest/results', methods=['GET'])
 @token_required
 def get_backtest_results(current_user):
-    """
-    Get backtest results. Optional query params:
-        ?year=2025
-        ?year=2025&month=1
-        ?year=2025&month=1&day=15
-    """
+    """Get backtest results"""
     try:
         year  = request.args.get('year')
         month = request.args.get('month')
@@ -1005,7 +1098,6 @@ def get_backtest_results(current_user):
             PaperTrade.trade_id.like('BT_%')
         )
 
-        # Filter by date prefix
         if year and month and day:
             prefix = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
             query = query.filter(PaperTrade.date == prefix)
@@ -1037,14 +1129,14 @@ def get_backtest_results(current_user):
         logger.error(f"Get backtest results error: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0',
+        'version': '3.0',
+        'strategy': 'Breakout + 20 EMA + Professional Risk',
         'oauth': 'zerodha'
     }), 200
 
@@ -1060,7 +1152,7 @@ def serve_frontend():
 
 # ==================== INITIALIZATION ====================
 
-# Create tables on startup — runs under both `python app.py` and `gunicorn`
+# Create tables on startup
 with app.app_context():
     db.create_all()
     logger.info("✅ Database tables created/verified")
