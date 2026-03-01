@@ -1,350 +1,1157 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nifty Paper Trading - Zerodha Powered</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .card { background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab-btn { padding: 10px 20px; background: #ddd; border: none; cursor: pointer; border-radius: 5px; font-weight: 500; }
-        .tab-btn.active { background: #3498db; color: white; }
-        .tab { display: none; }
-        .tab.active { display: block; }
-        input, select { padding: 10px; margin: 5px 0; width: 100%; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-        button { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px; font-weight: 500; }
-        button:hover { background: #229954; }
-        button.logout { background: #e74c3c; }
-        button.logout:hover { background: #c0392b; }
-        button.login-btn { background: #0066cc; width: 100%; padding: 12px; font-size: 16px; }
-        button.login-btn:hover { background: #0052a3; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #ecf0f1; font-weight: 600; }
-        .green { color: #27ae60; font-weight: 600; }
-        .red { color: #e74c3c; font-weight: 600; }
-        .stat { display: inline-block; width: 23%; margin-right: 2%; padding: 15px; background: #ecf0f1; border-radius: 5px; text-align: center; }
-        .stat-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
-        .login-container { max-width: 400px; margin: 50px auto; }
-        .logo { text-align: center; margin-bottom: 30px; }
-        .logo h1 { color: #2c3e50; font-size: 28px; }
-        .logo p { color: #7f8c8d; margin-top: 5px; }
-        .user-info { display: flex; align-items: center; gap: 15px; }
-        .user-info span { font-size: 14px; }
-        .status { padding: 8px 12px; background: #27ae60; color: white; border-radius: 5px; font-size: 12px; }
-        .alert { padding: 15px; background: #d4edda; border: 1px solid #c3e6cb; color: #155724; border-radius: 5px; margin-bottom: 15px; }
-        .error { background: #f8d7da; border-color: #f5c6cb; color: #721c24; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nifty Paper Trading</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── RESET & BASE ──────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#05080e;--card:#090d16;--card2:#0c1220;--border:#0f2035;
+  --text:#a8c4e0;--dim:#1e3a52;--green:#00e5a0;--red:#ff3d5a;
+  --yellow:#f5c518;--blue:#2d8fff;--orange:#ff6b2d;--purple:#9d6fff;
+}
+body{font-family:'DM Mono',monospace,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800;900&display=swap');
+
+/* ── LOGIN ────────────────────────────────────────────────── */
+#loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px;max-width:420px;width:100%;text-align:center}
+.login-box h1{font-family:'Syne',sans-serif;font-size:26px;font-weight:900;color:#fff;margin-bottom:8px}
+.login-box p{font-size:12px;color:var(--dim);margin-bottom:28px;line-height:1.7}
+.login-btn{width:100%;padding:14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:.2s}
+.login-btn:hover{background:#00c48a}
+.login-badge{display:inline-block;background:#00e5a015;border:1px solid #00e5a030;color:var(--green);padding:5px 14px;border-radius:20px;font-size:10px;letter-spacing:2px;margin-bottom:20px}
+
+/* ── LAYOUT ────────────────────────────────────────────────── */
+#dashboardScreen{display:none;max-width:1200px;margin:0 auto;padding:16px}
+
+/* ── HEADER ────────────────────────────────────────────────── */
+.header{background:linear-gradient(135deg,#080e1a,var(--bg));border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.header h1{font-family:'Syne',sans-serif;font-size:19px;font-weight:900;color:#fff}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{background:#00e5a015;border:1px solid #00e5a030;color:var(--green);padding:4px 12px;border-radius:4px;font-size:10px;letter-spacing:1.5px}
+.user-name{font-size:11px;color:var(--dim)}
+.btn-logout{background:none;border:1px solid #ff3d5a30;color:var(--red);padding:6px 14px;border-radius:5px;cursor:pointer;font-size:10px;letter-spacing:1px;transition:.2s}
+.btn-logout:hover{background:#ff3d5a15}
+
+/* ── TABS ──────────────────────────────────────────────────── */
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab-btn{background:none;border:none;padding:11px 18px;color:var(--dim);cursor:pointer;font-size:9px;letter-spacing:2px;text-transform:uppercase;border-bottom:2px solid transparent;transition:.15s}
+.tab-btn.active{color:var(--green);border-bottom-color:var(--green)}
+.tab-btn:hover:not(.active){color:var(--text)}
+.tab{display:none}.tab.active{display:block}
+
+/* ── CARDS ────────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:14px}
+.card-title{font-size:9px;color:var(--dim);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:700px){.grid2,.grid4{grid-template-columns:1fr 1fr}.grid3{grid-template-columns:1fr}}
+
+/* ── KPI BOXES ────────────────────────────────────────────── */
+.kpi{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:14px;text-align:center}
+.kpi-label{font-size:8px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.kpi-value{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
+
+/* ── INPUTS ────────────────────────────────────────────────── */
+.inp{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;outline:none;width:100%;transition:.2s}
+.inp:focus{border-color:var(--blue)}
+.inp::placeholder{color:var(--dim)}
+select.inp option{background:var(--card)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+label.lbl{font-size:8.5px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:4px}
+
+/* ── BUTTONS ────────────────────────────────────────────────── */
+.btn{background:none;border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:10px;transition:.15s;letter-spacing:.5px}
+.btn:hover{border-color:var(--text)}
+.btn-green{background:#00e5a015;border:1px solid #00e5a040;color:var(--green);padding:10px 20px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500;letter-spacing:.5px;transition:.15s;width:100%;margin-top:8px}
+.btn-green:hover{background:#00e5a025}
+.btn-red{background:#ff3d5a15;border:1px solid #ff3d5a40;color:var(--red);padding:6px 12px;border-radius:5px;cursor:pointer;font-size:10px;transition:.15s}
+.btn-red:hover{background:#ff3d5a25}
+.btn-sm{padding:4px 10px;font-size:9px;border-radius:4px}
+
+/* ── TABLES ────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:11px}
+.tbl th{padding:8px 10px;text-align:left;font-size:8px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;font-weight:400;border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 10px;border-bottom:1px solid #0f203520}
+.tbl tr:hover td{background:#080d1a}
+
+/* ── STATUS BADGES ────────────────────────────────────────── */
+.badge-g{background:#00e5a015;color:var(--green);border:1px solid #00e5a030;padding:2px 8px;border-radius:3px;font-size:8px;letter-spacing:1px}
+.badge-r{background:#ff3d5a15;color:var(--red);border:1px solid #ff3d5a30;padding:2px 8px;border-radius:3px;font-size:8px}
+.badge-y{background:#f5c51815;color:var(--yellow);border:1px solid #f5c51830;padding:2px 8px;border-radius:3px;font-size:8px}
+.badge-b{background:#2d8fff15;color:var(--blue);border:1px solid #2d8fff30;padding:2px 8px;border-radius:3px;font-size:8px}
+.green{color:var(--green);font-weight:600}
+.red{color:var(--red);font-weight:600}
+.yellow{color:var(--yellow)}
+.dim{color:var(--dim)}
+
+/* ── ACTIVE TRADE PANEL ───────────────────────────────────── */
+.active-trade{background:#040e08;border:1px solid #00e5a035;border-radius:8px;padding:16px;margin-bottom:14px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.pnl-bar-track{background:var(--bg);border-radius:4px;height:6px;overflow:hidden;margin:8px 0}
+.pnl-bar-fill{height:100%;border-radius:4px;transition:width .4s}
+
+/* ── CALENDAR STATS ───────────────────────────────────────── */
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:10px}
+.cal-header-cell{text-align:center;font-size:9px;color:var(--dim);padding:4px;letter-spacing:1px}
+.cal-cell{min-height:52px;background:var(--card2);border:1px solid var(--border);border-radius:5px;padding:4px;cursor:pointer;transition:.15s;position:relative}
+.cal-cell:hover{border-color:var(--blue)}
+.cal-cell.win{background:#00e5a010;border-color:#00e5a030}
+.cal-cell.loss{background:#ff3d5a10;border-color:#ff3d5a30}
+.cal-cell.skip{background:#1e3a5210;border-color:var(--border)}
+.cal-cell.selected{border-color:var(--blue)!important;box-shadow:0 0 0 1px var(--blue)}
+.cal-cell.empty{background:none;border-color:transparent;cursor:default}
+.cal-day{font-size:9px;color:var(--dim)}
+.cal-pnl{font-size:10px;font-weight:600;margin-top:3px}
+.cal-dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-top:2px}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav button{background:none;border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:4px;cursor:pointer;font-size:11px}
+.cal-nav button:hover{border-color:var(--text)}
+.cal-month-label{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#fff}
+
+/* ── DATE RANGE ───────────────────────────────────────────── */
+.range-inputs{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+.range-inputs>div{flex:1;min-width:130px}
+
+/* ── PERIOD TABS ──────────────────────────────────────────── */
+.period-pills{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.pill{background:none;border:1px solid var(--border);color:var(--dim);padding:5px 12px;border-radius:20px;cursor:pointer;font-size:9px;letter-spacing:1px;transition:.15s}
+.pill.active,.pill:hover{background:#2d8fff15;border-color:var(--blue);color:var(--blue)}
+
+/* ── CHART CONTAINERS ────────────────────────────────────── */
+.chart-box{position:relative;height:220px}
+.chart-box-sm{position:relative;height:160px}
+
+/* ── SIGNAL BOX ───────────────────────────────────────────── */
+.signal-box{background:#040e08;border:1px solid #00e5a030;border-radius:8px;padding:16px;margin-bottom:14px}
+.signal-box.skip-box{background:#0a0806;border-color:#ff6b2d30}
+.signal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-top:12px}
+.sig-item{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center}
+.sig-label{font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:4px}
+.sig-val{font-family:'Syne',sans-serif;font-size:16px;font-weight:800}
+
+/* ── STREAK INDICATORS ────────────────────────────────────── */
+.streak-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+.streak-dot{width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px}
+
+/* ── SUMMARY ROW ──────────────────────────────────────────── */
+.summary-row{display:flex;gap:6px;flex-wrap:wrap;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border);margin-top:14px}
+.summary-item{flex:1;min-width:90px;text-align:center}
+.summary-item .sl{font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px}
+.summary-item .sv{font-family:'Syne',sans-serif;font-size:15px;font-weight:800}
+
+/* ── NO DATA ──────────────────────────────────────────────── */
+.no-data{text-align:center;padding:40px;color:var(--dim);font-size:12px}
+
+/* ── SCROLLBAR ────────────────────────────────────────────── */
+::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-thumb{background:var(--border)}
+</style>
 </head>
 <body>
-    <div class="container">
-        <!-- Login Screen -->
-        <div id="loginScreen" class="login-container">
-            <div class="logo">
-                <h1>📈 Nifty Paper Trading</h1>
-                <p>Powered by Zerodha Kite API</p>
-            </div>
-            <div class="card">
-                <h2>Login with Zerodha</h2>
-                <p style="margin: 15px 0; color: #555; font-size: 14px;">
-                    Securely connect your Zerodha account using OAuth 2.0
-                </p>
-                <div class="alert">
-                    ℹ️ <strong>First time?</strong> Click the button below to create/link your Zerodha account
-                </div>
-                <button class="login-btn" onclick="initZerodhaLogin()">
-                    🔗 Connect Zerodha Account
-                </button>
-                <p style="margin-top: 20px; font-size: 12px; color: #7f8c8d; text-align: center;">
-                    Your credentials are secure. We use OAuth 2.0 - Zerodha never shares your password.
-                </p>
-            </div>
-        </div>
 
-        <!-- Dashboard Screen -->
-        <div id="dashboardScreen" style="display: none;">
-            <div class="header">
-                <div>
-                    <h1>📈 Nifty Paper Trading Dashboard</h1>
-                    <p id="userDisplay" style="font-size: 14px; margin-top: 5px;">Loading...</p>
-                </div>
-                <div class="user-info">
-                    <span class="status">✅ Connected</span>
-                    <button class="logout" onclick="logout()">Logout</button>
-                </div>
-            </div>
+<!-- ════════════ LOGIN ════════════ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-badge">◆ PAPER TRADING · NO REAL MONEY</div>
+    <h1>Nifty 50<br>Paper Trader</h1>
+    <p>Track your 15-min breakout strategy with live Zerodha data.<br>Validate before going live with real money.</p>
+    <button class="login-btn" onclick="initLogin()">🔗 Connect Zerodha Account</button>
+    <p style="margin-top:14px;font-size:10px;color:var(--dim)">Secure OAuth 2.0 · Your credentials never leave Zerodha</p>
+  </div>
+</div>
 
-            <div class="tabs">
-                <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
-                <button class="tab-btn" onclick="showTab('newTrade')">New Trade</button>
-                <button class="tab-btn" onclick="showTab('journal')">Journal</button>
-                <button class="tab-btn" onclick="showTab('stats')">Statistics</button>
-            </div>
+<!-- ════════════ DASHBOARD ════════════ -->
+<div id="dashboardScreen">
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div style="font-size:8px;color:var(--dim);letter-spacing:3px;text-transform:uppercase;margin-bottom:4px">◆ NIFTY 50 · 15-MIN BREAKOUT · PAPER MODE</div>
+      <h1>Strategy Journal</h1>
+    </div>
+    <div class="header-right">
+      <span class="badge">● LIVE</span>
+      <span class="user-name" id="userDisplay">Loading...</span>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+  </div>
 
-            <!-- Dashboard Tab -->
-            <div id="dashboardTab" class="tab active card">
-                <h2>Active Trades</h2>
-                <div id="activeTrades"><p>Loading trades...</p></div>
-            </div>
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('dashboard',this)">⚡ Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('newTrade',this)">＋ New Trade</button>
+    <button class="tab-btn" onclick="switchTab('journal',this)">📋 Journal</button>
+    <button class="tab-btn" onclick="switchTab('stats',this)">📊 Stats</button>
+    <button class="tab-btn" onclick="switchTab('backtest',this)">🔬 Backtest</button>
+  </div>
 
-            <!-- New Trade Tab -->
-            <div id="newTradeTab" class="tab card" style="display: none;">
-                <h2>Create New Trade</h2>
-                <input type="date" id="date">
-                <select id="strike">
-                    <option value="">Select Strike</option>
-                    <option value="23950">23950</option>
-                    <option value="24000">24000</option>
-                    <option value="24050">24050</option>
-                    <option value="24100">24100</option>
-                </select>
-                <select id="direction">
-                    <option value="CE">Call (CE) - Bullish</option>
-                    <option value="PE">Put (PE) - Bearish</option>
-                </select>
-                <input type="number" id="entry" step="0.5" placeholder="Entry Premium (₹)">
-                <input type="number" id="sl" step="0.5" placeholder="SL Premium (₹)">
-                <input type="number" id="target" step="0.5" placeholder="Target Premium (₹)">
-                <div style="background: #ecf0f1; padding: 10px; border-radius: 5px; margin-top: 10px; display: none;" id="summary">
-                    <div style="font-size: 12px;">
-                        <strong>Max Loss:</strong> <span id="maxLoss">₹0</span> |
-                        <strong>Max Profit:</strong> <span id="maxProfit">₹0</span>
-                    </div>
-                </div>
-                <button onclick="createTrade()">Create Trade</button>
-            </div>
-
-            <!-- Journal Tab -->
-            <div id="journalTab" class="tab card" style="display: none;">
-                <h2>Trade Journal</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Strike</th>
-                            <th>Type</th>
-                            <th>Entry</th>
-                            <th>Exit</th>
-                            <th>P&L</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="journalBody">
-                        <tr><td colspan="8">Loading trades...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Stats Tab -->
-            <div id="statsTab" class="tab card" style="display: none;">
-                <h2>Trading Statistics</h2>
-                <div class="stat">
-                    <div>Total Trades</div>
-                    <div class="stat-value" id="totalTrades">0</div>
-                </div>
-                <div class="stat">
-                    <div>Win Rate</div>
-                    <div class="stat-value" id="winRate">0%</div>
-                </div>
-                <div class="stat">
-                    <div>Total P&L</div>
-                    <div class="stat-value" id="totalPnl">₹0</div>
-                </div>
-                <div class="stat">
-                    <div>Winners</div>
-                    <div class="stat-value green" id="winners">0</div>
-                </div>
-                <div style="clear: both; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-                    <h3 style="margin: 10px 0;">Equity Curve</h3>
-                    <div id="equityChart" style="height: 200px; background: #f9f9f9; border-radius: 5px; padding: 10px;">
-                        <p style="color: #999; text-align: center; padding-top: 80px;">Chart loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <!-- ── DASHBOARD TAB ── -->
+  <div id="dashboardTab" class="tab active">
+    <!-- Today Signal -->
+    <div class="card" id="signalCard">
+      <div class="card-title">Today's Signal</div>
+      <div id="signalContent"><p class="dim">Click "Fetch Signal" after 9:30 AM</p></div>
+      <button class="btn" style="margin-top:10px" onclick="fetchSignal()">🔍 Fetch 9:30 AM Signal</button>
     </div>
 
-    <script>
-        const API = window.location.origin + '/api';
-        let token = localStorage.getItem('jwtToken');
-        let userId = localStorage.getItem('userId');
-        let userName = localStorage.getItem('userName');
+    <!-- Quick Stats -->
+    <div class="grid4" style="margin-bottom:14px" id="quickStats">
+      <div class="kpi"><div class="kpi-label">Total P&L</div><div class="kpi-value" id="qs-pnl" style="color:var(--green)">₹0</div></div>
+      <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value" id="qs-wr" style="color:var(--yellow)">0%</div></div>
+      <div class="kpi"><div class="kpi-label">Trades</div><div class="kpi-value" id="qs-tr" style="color:var(--blue)">0</div></div>
+      <div class="kpi"><div class="kpi-label">Today P&L</div><div class="kpi-value" id="qs-today" style="color:var(--text)">₹0</div></div>
+    </div>
 
-        // Check for OAuth callback
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('token') && urlParams.has('user_id')) {
-            token = urlParams.get('token');
-            userId = urlParams.get('user_id');
-            localStorage.setItem('jwtToken', token);
-            localStorage.setItem('userId', userId);
-            window.history.replaceState({}, document.title, '/');
-            showDashboard();
-        }
+    <!-- Active Trades -->
+    <div class="card">
+      <div class="card-title">Active Trades</div>
+      <div id="activeTrades"><p class="dim">No active trades</p></div>
+    </div>
 
-        // Initialize on page load
-        if (token && userId) {
-            showDashboard();
-        }
+    <!-- Recent Trades -->
+    <div class="card">
+      <div class="card-title">Recent Closed Trades</div>
+      <table class="tbl">
+        <thead><tr><th>Date</th><th>Strike</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Result</th></tr></thead>
+        <tbody id="recentTrades"><tr><td colspan="7" class="dim no-data">No trades yet</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 
-        document.getElementById('date').valueAsDate = new Date();
+  <!-- ── NEW TRADE TAB ── -->
+  <div id="newTradeTab" class="tab">
+    <div class="card" style="max-width:600px">
+      <div class="card-title">Enter 9:30 AM Data from Kite</div>
 
-        function initZerodhaLogin() {
-            // Redirect to /login endpoint which handles Zerodha OAuth
-            window.location.href = '/login';
-        }
+      <div class="form-row">
+        <div><label class="lbl">Nifty Spot</label><input class="inp" id="nt-spot" placeholder="e.g. 25300" type="number" oninput="calcPreview()"></div>
+        <div><label class="lbl">Trade Date</label><input class="inp" id="nt-date" type="date"></div>
+      </div>
+      <div class="form-row">
+        <div><label class="lbl">15-Min Candle HIGH</label><input class="inp" id="nt-high" placeholder="e.g. 25360" type="number" oninput="calcPreview()"></div>
+        <div><label class="lbl">15-Min Candle LOW</label><input class="inp" id="nt-low" placeholder="e.g. 25240" type="number" oninput="calcPreview()"></div>
+      </div>
+      <div class="form-row">
+        <div><label class="lbl">ATM Call (CE) Premium</label><input class="inp" id="nt-ce" placeholder="from Kite option chain" type="number" step="0.5" oninput="calcPreview()"></div>
+        <div><label class="lbl">ATM Put (PE) Premium</label><input class="inp" id="nt-pe" placeholder="from Kite option chain" type="number" step="0.5" oninput="calcPreview()"></div>
+      </div>
+      <div><label class="lbl">Notes (optional)</label><input class="inp" id="nt-note" placeholder="e.g. Budget day, high VIX..."></div>
 
-        function showDashboard() {
-            document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('dashboardScreen').style.display = 'block';
-            document.getElementById('userDisplay').textContent = `Welcome, ${userName || 'User'}`;
-            fetchData();
-        }
+      <!-- Preview -->
+      <div id="nt-preview" style="margin-top:14px;display:none"></div>
 
-        function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                fetch(API + '/logout', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + token }
-                }).then(() => {
-                    localStorage.removeItem('jwtToken');
-                    localStorage.removeItem('userId');
-                    localStorage.removeItem('userName');
-                    token = null;
-                    document.getElementById('loginScreen').style.display = 'block';
-                    document.getElementById('dashboardScreen').style.display = 'none';
-                });
-            }
-        }
+      <button class="btn-green" id="nt-submit" onclick="createTrade()" disabled>⚡ Enter Paper Trade</button>
+      <p style="font-size:9px;color:var(--dim);text-align:center;margin-top:8px">No real money · P&L tracked hypothetically</p>
+    </div>
+  </div>
 
-        function showTab(name) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
-            document.getElementById(name + 'Tab').classList.add('active');
-            event.target.classList.add('active');
-        }
+  <!-- ── JOURNAL TAB ── -->
+  <div id="journalTab" class="tab">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin:0">All Trades</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select class="inp" id="j-status" style="width:auto" onchange="loadJournal()">
+            <option value="">All Status</option>
+            <option value="open">Open</option>
+            <option value="target">Target Hit</option>
+            <option value="sl">Stop Loss</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>Date</th><th>Strike</th><th>Dir</th><th>Entry</th><th>SL</th><th>Target</th><th>Exit</th><th>P&L</th><th>Result</th><th>Action</th></tr></thead>
+          <tbody id="journalBody"><tr><td colspan="10" class="no-data dim">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
-        function createTrade() {
-            const strike = parseInt(document.getElementById('strike').value);
-            const entry = parseFloat(document.getElementById('entry').value);
-            const sl = parseFloat(document.getElementById('sl').value);
-            const target = parseFloat(document.getElementById('target').value);
+  <!-- ── STATS TAB ── -->
+  <div id="statsTab" class="tab">
+    <!-- Period Pills -->
+    <div class="period-pills">
+      <button class="pill active" onclick="setStatsPeriod('all',this)">All Time</button>
+      <button class="pill" onclick="setStatsPeriod('thisMonth',this)">This Month</button>
+      <button class="pill" onclick="setStatsPeriod('lastMonth',this)">Last Month</button>
+      <button class="pill" onclick="setStatsPeriod('custom',this)">Custom Range</button>
+    </div>
 
-            if (!strike || !entry || !sl || !target) {
-                alert('Please fill all fields');
-                return;
-            }
+    <!-- Date Range (shown only when custom) -->
+    <div id="customRange" style="display:none" class="card">
+      <div class="range-inputs">
+        <div><label class="lbl">From Date</label><input class="inp" id="range-from" type="date"></div>
+        <div><label class="lbl">To Date</label><input class="inp" id="range-to" type="date"></div>
+        <button class="btn-green" style="width:auto;margin-top:0;padding:9px 20px" onclick="loadStats()">Apply</button>
+      </div>
+    </div>
 
-            fetch(API + '/trade', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date: document.getElementById('date').value,
-                    strike: strike,
-                    direction: document.getElementById('direction').value,
-                    entry_premium: entry,
-                    sl_premium: sl,
-                    target_premium: target
-                })
-            }).then(r => r.json()).then(d => {
-                if (d.trade_id) {
-                    alert('✅ Trade created successfully!');
-                    fetchData();
-                    document.getElementById('entry').value = '';
-                    document.getElementById('sl').value = '';
-                    document.getElementById('target').value = '';
-                } else {
-                    alert('Error: ' + (d.error || 'Unknown error'));
-                }
-            }).catch(e => alert('Error: ' + e));
-        }
+    <!-- KPI row -->
+    <div class="grid4" style="margin-bottom:14px">
+      <div class="kpi"><div class="kpi-label">Total P&L</div><div class="kpi-value" id="st-pnl">₹0</div></div>
+      <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value" id="st-wr" style="color:var(--yellow)">0%</div></div>
+      <div class="kpi"><div class="kpi-label">Trades</div><div class="kpi-value" id="st-tr" style="color:var(--blue)">0</div></div>
+      <div class="kpi"><div class="kpi-label">Reward:Risk</div><div class="kpi-value" id="st-rr" style="color:var(--purple)">—</div></div>
+    </div>
+    <div class="grid4" style="margin-bottom:14px">
+      <div class="kpi"><div class="kpi-label">Winners</div><div class="kpi-value" style="color:var(--green)" id="st-wins">0</div></div>
+      <div class="kpi"><div class="kpi-label">Losers</div><div class="kpi-value" style="color:var(--red)" id="st-loss">0</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Win</div><div class="kpi-value" style="color:var(--green);font-size:16px" id="st-aw">₹0</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Loss</div><div class="kpi-value" style="color:var(--red);font-size:16px" id="st-al">₹0</div></div>
+    </div>
 
-        function fetchData() {
-            fetch(API + '/trades', { headers: { 'Authorization': 'Bearer ' + token } })
-                .then(r => r.json()).then(d => updateJournal(d.trades || []));
+    <!-- Charts Row -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Equity Curve</div>
+        <div class="chart-box"><canvas id="equityChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Win / Loss per Trade</div>
+        <div class="chart-box"><canvas id="perTradeChart"></canvas></div>
+      </div>
+    </div>
 
-            fetch(API + '/stats', { headers: { 'Authorization': 'Bearer ' + token } })
-                .then(r => r.json()).then(d => updateStats(d));
-        }
+    <!-- Streak + Day Analysis -->
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Trade Results Streak</div>
+        <div class="streak-row" id="streakRow"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Day-of-Week Performance</div>
+        <div class="chart-box-sm"><canvas id="dowChart"></canvas></div>
+      </div>
+    </div>
 
-        function updateJournal(trades) {
-            const body = document.getElementById('journalBody');
-            const active = document.getElementById('activeTrades');
+    <!-- Go Live Checklist -->
+    <div class="card" id="goLiveCard" style="display:none">
+      <div class="card-title">Go Live Readiness</div>
+      <div id="goLiveItems"></div>
+    </div>
+  </div>
 
-            if (!trades || trades.length === 0) {
-                body.innerHTML = '<tr><td colspan="8">No trades yet</td></tr>';
-                active.innerHTML = '<p>No active trades. Create your first trade!</p>';
-                return;
-            }
+  <!-- ── BACKTEST TAB ── -->
+  <div id="backtestTab" class="tab">
 
-            body.innerHTML = trades.map(t => `
-                <tr>
-                    <td>${t.date}</td>
-                    <td>${t.strike}</td>
-                    <td>${t.direction}</td>
-                    <td>₹${t.entry_premium}</td>
-                    <td>${t.exit_premium ? '₹' + t.exit_premium : '-'}</td>
-                    <td class="${t.pnl > 0 ? 'green' : t.pnl < 0 ? 'red' : ''}">${t.pnl ? '₹' + t.pnl.toFixed(2) : '-'}</td>
-                    <td>${t.status}</td>
-                    <td>${t.status === 'open' ? '<button onclick="closeTrade(\'' + t.trade_id + '\')">Close</button>' : '-'}</td>
-                </tr>
-            `).join('');
+    <!-- Calendar View -->
+    <div class="card">
+      <div class="card-title">📅 Performance Calendar</div>
 
-            active.innerHTML = trades.filter(t => t.status === 'open').map(t => `
-                <div class="card">
-                    <h3>${t.strike} ${t.direction}</h3>
-                    <p><strong>Entry:</strong> ₹${t.entry_premium} | <strong>SL:</strong> ₹${t.sl_premium} | <strong>Target:</strong> ₹${t.target_premium}</p>
-                    <button onclick="closeTrade(\'' + t.trade_id + '\')">Close Trade</button>
-                </div>
-            `).join('') || '<p>No active trades</p>';
-        }
+      <!-- Month Navigator -->
+      <div class="cal-nav">
+        <button onclick="calNav(-1)">◀ Prev</button>
+        <span class="cal-month-label" id="calMonthLabel">—</span>
+        <button onclick="calNav(1)">Next ▶</button>
+      </div>
 
-        function updateStats(stats) {
-            document.getElementById('totalTrades').textContent = stats.total_trades || 0;
-            document.getElementById('winRate').textContent = (stats.win_rate || 0) + '%';
-            document.getElementById('totalPnl').textContent = '₹' + (stats.total_pnl || 0).toFixed(2);
-            document.getElementById('winners').textContent = stats.winners || 0;
-        }
+      <!-- Day headers -->
+      <div class="calendar" id="calDayHeaders">
+        <div class="cal-header-cell">MON</div><div class="cal-header-cell">TUE</div>
+        <div class="cal-header-cell">WED</div><div class="cal-header-cell">THU</div>
+        <div class="cal-header-cell">FRI</div><div class="cal-header-cell">SAT</div>
+        <div class="cal-header-cell">SUN</div>
+      </div>
+      <div class="calendar" id="calGrid"></div>
 
-        function closeTrade(id) {
-            const price = prompt('Enter exit premium (₹):');
-            if (price && !isNaN(price)) {
-                fetch(API + '/trade/' + id + '/close', {
-                    method: 'PUT',
-                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ exit_premium: parseFloat(price) })
-                }).then(r => r.json()).then(d => {
-                    if (d.trade_id) {
-                        alert('✅ Trade closed! P&L: ₹' + d.pnl.toFixed(2));
-                        fetchData();
-                    } else {
-                        alert('Error: ' + (d.error || 'Unknown error'));
-                    }
-                }).catch(e => alert('Error: ' + e));
-            }
-        }
+      <!-- Month summary -->
+      <div id="calMonthSummary" class="summary-row" style="display:none"></div>
+    </div>
 
-        // Auto-calculate SL and Target
-        document.getElementById('entry').addEventListener('change', function() {
-            if (this.value) {
-                const entry = parseFloat(this.value);
-                const sl = Math.round(entry * 0.5 * 10) / 10;
-                const target = Math.round((entry + (entry - sl) * 2) * 10) / 10;
-                document.getElementById('sl').value = sl;
-                document.getElementById('target').value = target;
+    <!-- Date Range Backtest Analysis -->
+    <div class="card">
+      <div class="card-title">🔬 Analyse Any Period</div>
+      <div class="range-inputs">
+        <div><label class="lbl">From Date</label><input class="inp" id="bt-from" type="date"></div>
+        <div><label class="lbl">To Date</label><input class="inp" id="bt-to" type="date"></div>
+        <button class="btn-green" style="width:auto;margin-top:0;padding:9px 20px" onclick="loadBacktestRange()">Analyse</button>
+      </div>
 
-                // Show summary
-                const maxLoss = (entry - sl) * 50;
-                const maxProfit = (target - entry) * 50;
-                document.getElementById('maxLoss').textContent = '₹' + maxLoss.toFixed(2);
-                document.getElementById('maxProfit').textContent = '₹' + maxProfit.toFixed(2);
-                document.getElementById('summary').style.display = 'block';
-            }
-        });
-    </script>
+      <!-- Backtest Range KPIs -->
+      <div id="btRangeStats" style="display:none">
+        <div class="grid4" style="margin-bottom:14px">
+          <div class="kpi"><div class="kpi-label">Period P&L</div><div class="kpi-value" id="btr-pnl">₹0</div></div>
+          <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value" id="btr-wr" style="color:var(--yellow)">0%</div></div>
+          <div class="kpi"><div class="kpi-label">Trades</div><div class="kpi-value" id="btr-tr" style="color:var(--blue)">0</div></div>
+          <div class="kpi"><div class="kpi-label">Skipped</div><div class="kpi-value" id="btr-sk" style="color:var(--dim)">0</div></div>
+        </div>
+
+        <!-- Charts for range -->
+        <div class="grid2">
+          <div class="card">
+            <div class="card-title">Equity Curve (Period)</div>
+            <div class="chart-box"><canvas id="btEquityChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">P&L per Trade</div>
+            <div class="chart-box"><canvas id="btBarChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Odd/Even + Day distribution -->
+        <div class="grid2">
+          <div class="card">
+            <div class="card-title">Odd vs Even Days</div>
+            <div id="oddEvenDisplay" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px"></div>
+            <div class="chart-box-sm" style="margin-top:10px"><canvas id="oddEvenChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Win / Loss Distribution</div>
+            <div class="chart-box-sm"><canvas id="btDistChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Trade Table for Range -->
+        <div style="margin-top:14px;overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Date</th><th>Strike</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Result</th></tr></thead>
+            <tbody id="btRangeBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run Backtest Button -->
+    <div class="card">
+      <div class="card-title">▶ Run Live Backtest via Kite API</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:14px;line-height:1.8">
+        Fetches real 15-min candle data from Kite for any period and simulates trades.
+        Results appear in the calendar above and send Telegram alerts.
+        Requires ₹500/mo Kite subscription for historical data.
+      </p>
+      <div class="form-row-3">
+        <div><label class="lbl">Year</label>
+          <select class="inp" id="bt-year">
+            <option>2025</option><option selected>2026</option>
+          </select>
+        </div>
+        <div><label class="lbl">Month (optional)</label>
+          <select class="inp" id="bt-month">
+            <option value="">Full Year</option>
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div><label class="lbl">Day (optional)</label>
+          <input class="inp" id="bt-day" placeholder="e.g. 15" type="number" min="1" max="31">
+        </div>
+      </div>
+      <button class="btn-green" style="margin-top:4px" onclick="runBacktest()" id="bt-run-btn">▶ Start Backtest</button>
+      <div id="bt-run-status" style="display:none;margin-top:10px;font-size:11px;color:var(--green)"></div>
+    </div>
+
+  </div><!-- end backtestTab -->
+
+</div><!-- end dashboardScreen -->
+
+<!-- ════════ JAVASCRIPT ════════ -->
+<script>
+const API = window.location.origin + '/api';
+let TOKEN = null;
+let USER_ID = null;
+let USER_NAME = null;
+let statsCharts = {};
+let statsPeriod = 'all';
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-indexed
+let allTrades = []; // cached full trade list
+let btRangeCharts = {};
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+(function init() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.has('token') && p.has('user_id')) {
+    TOKEN     = p.get('token');
+    USER_ID   = p.get('user_id');
+    USER_NAME = p.get('user_name') || 'User';
+    sessionStorage.setItem('t', TOKEN);
+    sessionStorage.setItem('u', USER_ID);
+    sessionStorage.setItem('n', USER_NAME);
+    window.history.replaceState({}, '', '/');
+    enterDashboard();
+  } else {
+    TOKEN     = sessionStorage.getItem('t');
+    USER_ID   = sessionStorage.getItem('u');
+    USER_NAME = sessionStorage.getItem('n');
+    if (TOKEN && USER_ID) enterDashboard();
+  }
+})();
+
+function initLogin() { window.location.href = '/login'; }
+
+function enterDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboardScreen').style.display = 'block';
+  document.getElementById('userDisplay').textContent = USER_NAME || 'User';
+  // Set today's date default
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('nt-date').value = today;
+  document.getElementById('range-from').value = today.slice(0,7) + '-01';
+  document.getElementById('range-to').value = today;
+  document.getElementById('bt-from').value = today.slice(0,7) + '-01';
+  document.getElementById('bt-to').value = today;
+  loadAll();
+  renderCalendar();
+}
+
+function logout() {
+  if (!confirm('Logout?')) return;
+  apiFetch('/logout', 'POST').finally(() => {
+    sessionStorage.clear(); TOKEN = null;
+    document.getElementById('dashboardScreen').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+  });
+}
+
+// ── API HELPER ────────────────────────────────────────────────────────────────
+async function apiFetch(path, method='GET', body=null) {
+  const opts = { method, headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  return r.json();
+}
+
+// ── LOAD ALL DATA ─────────────────────────────────────────────────────────────
+function loadAll() {
+  loadTrades();
+  loadStats();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(name + 'Tab').classList.add('active');
+  btn.classList.add('active');
+  if (name === 'stats')    { loadStats(); }
+  if (name === 'journal')  { loadJournal(); }
+  if (name === 'backtest') { renderCalendar(); }
+}
+
+// ── SIGNAL ────────────────────────────────────────────────────────────────────
+async function fetchSignal() {
+  document.getElementById('signalContent').innerHTML = '<p class="dim">Fetching...</p>';
+  try {
+    const d = await apiFetch('/signal/today');
+    const box = document.getElementById('signalContent');
+    if (d.signal === 'SKIP') {
+      box.innerHTML = `<div class="skip-box signal-box" style="background:none;border:none;padding:0">
+        <div style="font-size:11px;color:var(--orange)">⏭ SKIP TODAY — ${d.reason || 'Candle filter'}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:4px">Candle: ${d.candle_size||0} pts (need 50–350)</div>
+      </div>`;
+    } else if (d.signal === 'TRADE') {
+      const pnlDir = d.direction === 'CE' ? '▲' : '▼';
+      box.innerHTML = `<div class="signal-box">
+        <div style="font-size:14px;font-family:'Syne',sans-serif;font-weight:800;color:#fff">
+          ${pnlDir} BUY NIFTY ${d.strike} ${d.direction}
+          <span style="font-size:11px;font-weight:400;color:${d.direction==='CE'?'var(--green)':'var(--red)'};margin-left:8px">${d.direction==='CE'?'CALL · Bullish':'PUT · Bearish'}</span>
+        </div>
+        <div class="signal-grid">
+          ${[['Entry',`₹${d.entry_premium}`,'var(--text)'],['Stop Loss',`₹${d.sl_premium}`,'var(--red)'],['Target',`₹${d.target_premium}`,'var(--green)'],
+             ['Max Loss',`₹${d.max_loss?.toLocaleString('en-IN')}`,'var(--red)'],['Max Profit',`₹${d.max_profit?.toLocaleString('en-IN')}`,'var(--green)'],
+             ['Candle',`${d.candle_size} pts`,'var(--yellow)']].map(([l,v,c])=>`
+          <div class="sig-item"><div class="sig-label">${l}</div><div class="sig-val" style="color:${c}">${v}</div></div>`).join('')}
+        </div>
+      </div>`;
+    } else {
+      box.innerHTML = `<p class="dim">${d.error || 'No signal available'}</p>`;
+    }
+  } catch(e) {
+    document.getElementById('signalContent').innerHTML = `<p class="red">Error: ${e.message}</p>`;
+  }
+}
+
+// ── NEW TRADE ─────────────────────────────────────────────────────────────────
+function calcPreview() {
+  const spot = parseFloat(document.getElementById('nt-spot').value);
+  const high = parseFloat(document.getElementById('nt-high').value);
+  const low  = parseFloat(document.getElementById('nt-low').value);
+  const ce   = parseFloat(document.getElementById('nt-ce').value);
+  const pe   = parseFloat(document.getElementById('nt-pe').value);
+  const prev = document.getElementById('nt-preview');
+  const btn  = document.getElementById('nt-submit');
+
+  if (!spot || !high || !low) { prev.style.display='none'; btn.disabled=true; return; }
+  const size = high - low;
+  const atm  = Math.round(spot/50)*50;
+
+  if (size > 350 || size < 50) {
+    prev.style.display='block';
+    prev.innerHTML = `<div style="background:#0a0806;border:1px solid #ff6b2d30;border-radius:7px;padding:12px;color:var(--orange);font-size:11px">
+      ⚠️ SKIP — Candle ${size.toFixed(0)} pts (need 50–350 pts)</div>`;
+    btn.disabled = true; return;
+  }
+
+  const dir   = (ce && pe) ? (ce >= pe ? 'CE' : 'PE') : (spot > (high+low)/2 ? 'CE' : 'PE');
+  const entry = dir==='CE' ? ce : pe;
+  if (!entry) { prev.style.display='none'; btn.disabled=true; return; }
+  const sl  = Math.round(entry * 0.5 * 10)/10;
+  const tgt = Math.round((entry + (entry-sl)*2)*10)/10;
+  const ml  = (entry-sl)*50; const mp = (tgt-entry)*50;
+
+  prev.style.display='block';
+  prev.innerHTML = `<div style="background:#040e08;border:1px solid #00e5a030;border-radius:7px;padding:14px">
+    <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;margin-bottom:10px">
+      ${dir==='CE'?'▲':'▼'} BUY ${atm} ${dir}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px">
+      ${[['Entry',`₹${entry}`,'var(--text)'],['SL',`₹${sl}`,'var(--red)'],['Target',`₹${tgt}`,'var(--green)'],
+         ['Max Loss',`₹${ml.toFixed(0)}`,'var(--red)'],['Max Profit',`₹${mp.toFixed(0)}`,'var(--green)'],['Candle',`${size.toFixed(0)} pts`,'var(--yellow)']
+        ].map(([l,v,c])=>`<div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;text-align:center">
+          <div style="font-size:8px;color:var(--dim);letter-spacing:1.5px;margin-bottom:3px">${l}</div>
+          <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:${c}">${v}</div></div>`).join('')}
+    </div>
+  </div>`;
+  btn.disabled = false;
+  btn.dataset.dir = dir;
+  btn.dataset.strike = atm;
+  btn.dataset.entry = entry;
+  btn.dataset.sl = sl;
+  btn.dataset.tgt = tgt;
+  btn.dataset.high = high;
+  btn.dataset.low = low;
+  btn.dataset.spot = spot;
+}
+
+async function createTrade() {
+  const btn = document.getElementById('nt-submit');
+  const date = document.getElementById('nt-date').value;
+  if (!date || btn.disabled) return;
+  try {
+    const d = await apiFetch('/trade','POST',{
+      date, strike: parseInt(btn.dataset.strike),
+      direction: btn.dataset.dir,
+      entry_premium: parseFloat(btn.dataset.entry),
+      sl_premium: parseFloat(btn.dataset.sl),
+      target_premium: parseFloat(btn.dataset.tgt),
+      candle_high: parseFloat(btn.dataset.high),
+      candle_low: parseFloat(btn.dataset.low),
+      spot_price: parseFloat(btn.dataset.spot),
+      note: document.getElementById('nt-note').value
+    });
+    if (d.trade_id) {
+      alert('✅ Trade entered!\n' + btn.dataset.strike + ' ' + btn.dataset.dir + ' @ ₹' + btn.dataset.entry);
+      document.getElementById('nt-preview').style.display='none';
+      ['nt-spot','nt-high','nt-low','nt-ce','nt-pe','nt-note'].forEach(id=>{document.getElementById(id).value='';});
+      btn.disabled = true;
+      loadAll();
+    } else alert('Error: ' + (d.error || JSON.stringify(d)));
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── TRADES / JOURNAL ──────────────────────────────────────────────────────────
+async function loadTrades() {
+  try {
+    const d = await apiFetch('/trades');
+    allTrades = d.trades || [];
+    renderActiveTrades(allTrades);
+    renderRecentTrades(allTrades);
+    updateQuickStats();
+  } catch(e) {}
+}
+
+function renderActiveTrades(trades) {
+  const el = document.getElementById('activeTrades');
+  const open = trades.filter(t => t.status === 'open');
+  if (!open.length) { el.innerHTML = '<p class="dim">No active trades. Enter one after 9:30 AM breakout.</p>'; return; }
+  el.innerHTML = open.map(t => {
+    const pnl = 0; // Live LTP not available without WebSocket
+    return `<div class="active-trade">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <span class="live-dot"></span>
+          <span style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;margin-left:8px">${t.strike} ${t.direction}</span>
+          <span style="margin-left:8px;color:${t.direction==='CE'?'var(--green)':'var(--red)'};font-size:11px">${t.direction==='CE'?'▲ CALL':'▼ PUT'}</span>
+        </div>
+        <button class="btn-red" onclick="closeTrade('${t.trade_id}')">Close Trade</button>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px">
+        <span>Entry <strong>₹${t.entry_premium}</strong></span>
+        <span style="color:var(--red)">SL <strong>₹${t.sl_premium}</strong></span>
+        <span style="color:var(--green)">Target <strong>₹${t.target_premium}</strong></span>
+        <span style="color:var(--dim)">${t.date} · ${t.entry_time}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRecentTrades(trades) {
+  const closed = trades.filter(t => t.status!=='open').slice(0,8);
+  const el = document.getElementById('recentTrades');
+  if (!closed.length) { el.innerHTML = '<tr><td colspan="7" class="dim no-data">No closed trades yet</td></tr>'; return; }
+  el.innerHTML = closed.map(t => {
+    const pc = (t.pnl||0)>=0?'green':'red';
+    const badge = t.status==='target'?'badge-g':t.status==='sl'?'badge-r':'badge-y';
+    return `<tr>
+      <td class="dim">${t.date}</td><td><strong>${t.strike}</strong></td>
+      <td style="color:${t.direction==='CE'?'var(--green)':'var(--red)'}">${t.direction==='CE'?'▲':'▼'} ${t.direction}</td>
+      <td>₹${t.entry_premium}</td>
+      <td>${t.exit_premium?'₹'+t.exit_premium:'-'}</td>
+      <td class="${pc}">${t.pnl?(((t.pnl>=0?'+':'')+t.pnl.toLocaleString('en-IN','₹'))):'-'}</td>
+      <td><span class="${badge}">${t.status.toUpperCase()}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function updateQuickStats() {
+  const closed = allTrades.filter(t=>t.status!=='open');
+  const wins   = closed.filter(t=>(t.pnl||0)>0);
+  const total  = closed.reduce((a,t)=>a+(t.pnl||0),0);
+  const today  = new Date().toISOString().slice(0,10);
+  const todayPnl = allTrades.filter(t=>t.date===today&&t.status!=='open').reduce((a,t)=>a+(t.pnl||0),0);
+  const wr = closed.length ? (wins.length/closed.length*100).toFixed(1) : 0;
+  document.getElementById('qs-pnl').textContent = fmtPnl(total);
+  document.getElementById('qs-pnl').style.color = total>=0?'var(--green)':'var(--red)';
+  document.getElementById('qs-wr').textContent = wr + '%';
+  document.getElementById('qs-wr').style.color = wr>=55?'var(--green)':'var(--yellow)';
+  document.getElementById('qs-tr').textContent = closed.length;
+  document.getElementById('qs-today').textContent = fmtPnl(todayPnl);
+  document.getElementById('qs-today').style.color = todayPnl>=0?'var(--green)':'var(--red)';
+}
+
+async function loadJournal() {
+  const status = document.getElementById('j-status').value;
+  const path = '/trades' + (status ? '?status='+status : '');
+  try {
+    const d = await apiFetch(path);
+    const trades = d.trades || [];
+    const el = document.getElementById('journalBody');
+    if (!trades.length) { el.innerHTML='<tr><td colspan="10" class="dim no-data">No trades found</td></tr>'; return; }
+    el.innerHTML = trades.map(t => {
+      const pc = (t.pnl||0)>=0?'green':'red';
+      const badge = t.status==='target'?'badge-g':t.status==='sl'?'badge-r':t.status==='open'?'badge-y':'badge-b';
+      return `<tr>
+        <td class="dim">${t.date}</td>
+        <td><strong>${t.strike}</strong></td>
+        <td style="color:${t.direction==='CE'?'var(--green)':'var(--red)'}">${t.direction==='CE'?'▲':'▼'} ${t.direction}</td>
+        <td>₹${t.entry_premium}</td>
+        <td style="color:var(--red)">₹${t.sl_premium}</td>
+        <td style="color:var(--green)">₹${t.target_premium}</td>
+        <td>${t.exit_premium?'₹'+t.exit_premium:'-'}</td>
+        <td class="${pc}">${t.pnl!=null?(((t.pnl>=0?'+₹':'-₹')+Math.abs(t.pnl).toLocaleString('en-IN'))):'-'}</td>
+        <td><span class="${badge}">${t.status.toUpperCase()}</span></td>
+        <td>${t.status==='open'?`<button class="btn btn-sm btn-red" onclick="closeTrade('${t.trade_id}')">Close</button>`:'-'}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function closeTrade(id) {
+  const price = prompt('Enter exit premium (₹):');
+  if (!price || isNaN(price)) return;
+  try {
+    const d = await apiFetch('/trade/'+id+'/close','PUT',{exit_premium:parseFloat(price)});
+    if (d.status) {
+      const pnl = d.pnl;
+      alert(`Trade closed!\n${d.status.toUpperCase()}\nP&L: ${pnl>=0?'+':'-'}₹${Math.abs(pnl).toLocaleString('en-IN')}`);
+      loadAll(); loadJournal();
+    } else alert('Error: '+(d.error||JSON.stringify(d)));
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function setStatsPeriod(p, btn) {
+  statsPeriod = p;
+  document.querySelectorAll('.period-pills .pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('customRange').style.display = p==='custom'?'block':'none';
+  if (p !== 'custom') loadStats();
+}
+
+async function loadStats() {
+  try {
+    let from = null, to = null;
+    const today = new Date();
+    if (statsPeriod === 'thisMonth') {
+      from = today.toISOString().slice(0,7)+'-01';
+      to = today.toISOString().slice(0,10);
+    } else if (statsPeriod === 'lastMonth') {
+      const lm = new Date(today.getFullYear(), today.getMonth()-1, 1);
+      from = lm.toISOString().slice(0,7)+'-01';
+      const lmEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      to = lmEnd.toISOString().slice(0,10);
+    } else if (statsPeriod === 'custom') {
+      from = document.getElementById('range-from').value;
+      to   = document.getElementById('range-to').value;
+    }
+
+    const d = await apiFetch('/stats');
+    let trades = (await apiFetch('/trades')).trades || [];
+
+    // Filter by period
+    if (from && to) trades = trades.filter(t=>t.date>=from && t.date<=to);
+    const closed = trades.filter(t=>t.status!=='open');
+    const wins   = closed.filter(t=>(t.pnl||0)>0);
+    const losses = closed.filter(t=>(t.pnl||0)<=0);
+    const total  = closed.reduce((a,t)=>a+(t.pnl||0),0);
+    const wr     = closed.length?(wins.length/closed.length*100).toFixed(1):0;
+    const avgW   = wins.length  ? wins.reduce((a,t)=>a+(t.pnl||0),0)/wins.length : 0;
+    const avgL   = losses.length? losses.reduce((a,t)=>a+(t.pnl||0),0)/losses.length : 0;
+    const rr     = avgL ? (Math.abs(avgW/avgL)).toFixed(2) : '—';
+
+    document.getElementById('st-pnl').textContent = fmtPnl(total);
+    document.getElementById('st-pnl').style.color = total>=0?'var(--green)':'var(--red)';
+    document.getElementById('st-wr').textContent = wr+'%';
+    document.getElementById('st-wr').style.color = wr>=55?'var(--green)':'var(--yellow)';
+    document.getElementById('st-tr').textContent = closed.length;
+    document.getElementById('st-rr').textContent = rr+':1';
+    document.getElementById('st-wins').textContent = wins.length;
+    document.getElementById('st-loss').textContent = losses.length;
+    document.getElementById('st-aw').textContent = fmtPnl(avgW);
+    document.getElementById('st-al').textContent = fmtPnl(avgL);
+
+    // Equity curve
+    let cum = 0;
+    const eqLabels = [], eqData = [];
+    [...closed].reverse().forEach((t,i)=>{ cum+=(t.pnl||0); eqLabels.push('#'+(i+1)); eqData.push(cum); });
+    drawChart('equityChart', 'line', eqLabels, eqData, 'Equity', total>=0?'#00e5a0':'#ff3d5a');
+
+    // Per-trade bars
+    const ptLabels = [...closed].reverse().map((t,i)=>'#'+(i+1));
+    const ptData   = [...closed].reverse().map(t=>t.pnl||0);
+    const ptColors = ptData.map(v=>v>=0?'#00e5a080':'#ff3d5a80');
+    drawBarChart('perTradeChart', ptLabels, ptData, ptColors);
+
+    // Streak
+    renderStreak(closed);
+
+    // Day-of-week
+    renderDOW(closed);
+
+    // Go live card
+    renderGoLive(closed.length, parseFloat(wr), total, rr);
+
+  } catch(e) { console.error(e); }
+}
+
+function renderStreak(trades) {
+  const el = document.getElementById('streakRow');
+  const sorted = [...trades].reverse().slice(0,30);
+  el.innerHTML = sorted.map(t => {
+    const c = (t.pnl||0)>0?'var(--green)':(t.pnl||0)<0?'var(--red)':'var(--dim)';
+    const txt = (t.pnl||0)>0?'W':(t.pnl||0)<0?'L':'T';
+    return `<div class="streak-dot" style="background:${c}20;color:${c};border:1px solid ${c}30" title="${t.date} ${t.pnl>0?'+₹':'₹'}${Math.abs(t.pnl||0).toLocaleString('en-IN')}">${txt}</div>`;
+  }).join('');
+  if (!sorted.length) el.innerHTML = '<span class="dim" style="font-size:11px">No closed trades yet</span>';
+}
+
+function renderDOW(trades) {
+  const days = ['Mon','Tue','Wed','Thu','Fri'];
+  const data = [0,0,0,0,0], cnt = [0,0,0,0,0];
+  trades.forEach(t => {
+    const d = new Date(t.date).getDay(); // 0=Sun
+    const idx = d===0?6:d-1; // Mon=0
+    if (idx < 5) { data[idx]+=(t.pnl||0); cnt[idx]++; }
+  });
+  const avgs = data.map((v,i)=>cnt[i]?Math.round(v/cnt[i]):0);
+  drawBarChart('dowChart', days, avgs, avgs.map(v=>v>=0?'#00e5a080':'#ff3d5a80'));
+}
+
+function renderGoLive(n, wr, total, rr) {
+  const card = document.getElementById('goLiveCard');
+  const el   = document.getElementById('goLiveItems');
+  if (n < 5) { card.style.display='none'; return; }
+  card.style.display='block';
+  const checks = [
+    { ok: wr>=55,   label:'Win rate ≥ 55%',        val: wr+'%'     },
+    { ok: total>0,  label:'Net P&L positive',       val: fmtPnl(total) },
+    { ok: rr>=1.5,  label:'Reward:Risk ≥ 1.5:1',   val: rr+':1'    },
+    { ok: n>=20,    label:'Minimum 20 trades done', val: n+' / 20'  },
+  ];
+  const allOk = checks.every(c=>c.ok);
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px">
+      ${checks.map(c=>`<div style="display:flex;gap:8px;align-items:center">
+        <span style="color:${c.ok?'var(--green)':'var(--red)'};font-size:14px">${c.ok?'✓':'✗'}</span>
+        <div><div style="font-size:10px;color:var(--text)">${c.label}</div>
+        <div style="font-size:13px;font-weight:600;color:${c.ok?'var(--green)':'var(--red)'}">${c.val}</div></div>
+      </div>`).join('')}
+    </div>
+    <div style="background:${allOk?'#020e06':'#0a0808'};border:1px solid ${allOk?'#00e5a030':'#ff3d5a30'};border-radius:6px;padding:12px;font-size:11px;color:${allOk?'var(--green)':'var(--dim)'}">
+      ${allOk ? '🎯 All checks passed! You can consider moving to live trading.' : '📋 Complete at least 20 paper trades to get a statistically valid result.'}
+    </div>`;
+}
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+async function renderCalendar() {
+  document.getElementById('calMonthLabel').textContent =
+    new Date(calYear, calMonth).toLocaleString('en-IN',{month:'long',year:'numeric'});
+
+  const d = await apiFetch('/trades');
+  const trades = (d.trades || []).filter(t => {
+    const td = new Date(t.date);
+    return td.getFullYear()===calYear && td.getMonth()===calMonth;
+  });
+
+  // Index by date
+  const byDate = {};
+  trades.forEach(t => {
+    if (!byDate[t.date]) byDate[t.date] = {trades:[],pnl:0};
+    byDate[t.date].trades.push(t);
+    byDate[t.date].pnl += (t.pnl||0);
+  });
+
+  const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
+  const offset   = firstDay===0 ? 6 : firstDay-1; // Mon=0
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // Empty cells
+  for (let i=0; i<offset; i++) grid.innerHTML += '<div class="cal-cell empty"></div>';
+
+  let mWins=0, mLoss=0, mSkip=0, mPnl=0;
+
+  for (let day=1; day<=daysInMonth; day++) {
+    const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const data = byDate[ds];
+    const weekday = new Date(calYear, calMonth, day).getDay();
+    const isWeekend = weekday===0||weekday===6;
+
+    let cls='cal-cell', pnlHtml='', dotColor='var(--dim)', result='';
+    if (data && data.trades.length) {
+      const net = data.pnl;
+      mPnl += net;
+      if (net > 0) { cls+=' win'; mWins++; dotColor='var(--green)'; result='WIN'; }
+      else { cls+=' loss'; mLoss++; dotColor='var(--red)'; result='LOSS'; }
+      pnlHtml = `<div class="cal-pnl" style="color:${dotColor}">${net>=0?'+':''} ₹${Math.abs(net).toLocaleString('en-IN')}</div>`;
+    } else if (isWeekend) {
+      cls += ' empty';
+    } else {
+      cls += ' skip'; mSkip++;
+    }
+
+    grid.innerHTML += `<div class="${cls}" onclick="calDayClick('${ds}',${data?JSON.stringify(data.pnl):0})" title="${ds}">
+      <div class="cal-day">${day}</div>
+      ${pnlHtml}
+      ${data?`<div class="cal-dot" style="background:${dotColor}"></div>`:''}
+    </div>`;
+  }
+
+  // Month summary
+  const ms = document.getElementById('calMonthSummary');
+  if (mWins+mLoss > 0) {
+    ms.style.display = 'flex';
+    ms.innerHTML = [
+      {l:'Month P&L', v:fmtPnl(mPnl), c:mPnl>=0?'var(--green)':'var(--red)'},
+      {l:'Trades', v:mWins+mLoss, c:'var(--blue)'},
+      {l:'Wins', v:mWins, c:'var(--green)'},
+      {l:'Losses', v:mLoss, c:'var(--red)'},
+      {l:'Win Rate', v:((mWins/(mWins+mLoss))*100).toFixed(0)+'%', c:'var(--yellow)'},
+      {l:'Skipped', v:mSkip, c:'var(--dim)'},
+    ].map(s=>`<div class="summary-item"><div class="sl">${s.l}</div><div class="sv" style="color:${s.c}">${s.v}</div></div>`).join('');
+  } else {
+    ms.style.display = 'none';
+  }
+}
+
+function calNav(dir) {
+  calMonth += dir;
+  if (calMonth > 11) { calMonth=0; calYear++; }
+  if (calMonth < 0)  { calMonth=11; calYear--; }
+  renderCalendar();
+}
+
+function calDayClick(ds, pnl) {
+  // Remove previous selection
+  document.querySelectorAll('.cal-cell.selected').forEach(c=>c.classList.remove('selected'));
+  const idx = ds.split('-')[2];
+  const cells = document.querySelectorAll('#calGrid .cal-cell:not(.empty)');
+  // Basic highlight — you'd match by title
+  alert(`${ds}\nP&L: ${pnl>=0?'+₹':'-₹'}${Math.abs(pnl).toLocaleString('en-IN')}`);
+}
+
+// ── BACKTEST RANGE ────────────────────────────────────────────────────────────
+async function loadBacktestRange() {
+  const from = document.getElementById('bt-from').value;
+  const to   = document.getElementById('bt-to').value;
+  if (!from || !to) { alert('Select from and to dates'); return; }
+
+  try {
+    const d = await apiFetch('/trades');
+    let trades = (d.trades||[]).filter(t=>t.date>=from&&t.date<=to&&t.status!=='open');
+
+    document.getElementById('btRangeStats').style.display='block';
+
+    const wins   = trades.filter(t=>(t.pnl||0)>0);
+    const losses = trades.filter(t=>(t.pnl||0)<=0);
+    const total  = trades.reduce((a,t)=>a+(t.pnl||0),0);
+    const wr     = trades.length?(wins.length/trades.length*100).toFixed(1):0;
+
+    document.getElementById('btr-pnl').textContent = fmtPnl(total);
+    document.getElementById('btr-pnl').style.color = total>=0?'var(--green)':'var(--red)';
+    document.getElementById('btr-wr').textContent  = wr+'%';
+    document.getElementById('btr-tr').textContent  = trades.length;
+    document.getElementById('btr-sk').textContent  = '—';
+
+    // Equity chart
+    let cum=0;
+    const sorted = [...trades].sort((a,b)=>a.date.localeCompare(b.date));
+    const eqL=[], eqD=[];
+    sorted.forEach((t,i)=>{cum+=(t.pnl||0);eqL.push(t.date.slice(5));eqD.push(cum);});
+    drawChart('btEquityChart','line',eqL,eqD,'Equity',total>=0?'#00e5a0':'#ff3d5a');
+
+    // Bar chart
+    const bColors = sorted.map(t=>(t.pnl||0)>=0?'#00e5a080':'#ff3d5a80');
+    drawBarChart('btBarChart',sorted.map(t=>t.date.slice(5)),sorted.map(t=>t.pnl||0),bColors);
+
+    // Odd/Even analysis
+    const oddDays   = sorted.filter(t=>parseInt(t.date.slice(-2))%2!==0);
+    const evenDays  = sorted.filter(t=>parseInt(t.date.slice(-2))%2===0);
+    const oddPnl    = oddDays.reduce((a,t)=>a+(t.pnl||0),0);
+    const evenPnl   = evenDays.reduce((a,t)=>a+(t.pnl||0),0);
+    const oddWr     = oddDays.length?((oddDays.filter(t=>(t.pnl||0)>0).length/oddDays.length*100).toFixed(0)):'0';
+    const evenWr    = evenDays.length?((evenDays.filter(t=>(t.pnl||0)>0).length/evenDays.length*100).toFixed(0)):'0';
+
+    document.getElementById('oddEvenDisplay').innerHTML = `
+      <div style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:14px;text-align:center">
+        <div style="font-size:9px;color:var(--dim);letter-spacing:2px;margin-bottom:6px">ODD DAYS</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:${oddPnl>=0?'var(--green)':'var(--red)'}">${fmtPnl(oddPnl)}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px">${oddDays.length} trades · ${oddWr}% WR</div>
+      </div>
+      <div style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:14px;text-align:center">
+        <div style="font-size:9px;color:var(--dim);letter-spacing:2px;margin-bottom:6px">EVEN DAYS</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:${evenPnl>=0?'var(--green)':'var(--red)'}">${fmtPnl(evenPnl)}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px">${evenDays.length} trades · ${evenWr}% WR</div>
+      </div>`;
+
+    drawBarChart('oddEvenChart',['Odd Days','Even Days'],[oddPnl,evenPnl],
+      [oddPnl>=0?'#00e5a080':'#ff3d5a80', evenPnl>=0?'#00e5a080':'#ff3d5a80']);
+
+    // Win/Loss dist pie
+    drawDist('btDistChart', wins.length, losses.length);
+
+    // Table
+    document.getElementById('btRangeBody').innerHTML = sorted.map(t=>{
+      const pc=(t.pnl||0)>=0?'green':'red';
+      const badge=t.status==='target'?'badge-g':t.status==='sl'?'badge-r':'badge-b';
+      return `<tr><td class="dim">${t.date}</td><td>${t.strike}</td>
+        <td style="color:${t.direction==='CE'?'var(--green)':'var(--red)'}">${t.direction}</td>
+        <td>₹${t.entry_premium}</td><td>${t.exit_premium?'₹'+t.exit_premium:'-'}</td>
+        <td class="${pc}">${t.pnl!=null?((t.pnl>=0?'+₹':'-₹')+Math.abs(t.pnl).toLocaleString('en-IN')):'-'}</td>
+        <td><span class="${badge}">${t.status.toUpperCase()}</span></td></tr>`;
+    }).join('');
+
+  } catch(e) { console.error(e); alert('Error: '+e.message); }
+}
+
+// ── RUN BACKTEST ──────────────────────────────────────────────────────────────
+async function runBacktest() {
+  const year  = document.getElementById('bt-year').value;
+  const month = document.getElementById('bt-month').value;
+  const day   = document.getElementById('bt-day').value;
+  const btn   = document.getElementById('bt-run-btn');
+  const status= document.getElementById('bt-run-status');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Starting...';
+  status.style.display = 'block';
+  status.textContent = 'Sending request...';
+
+  try {
+    const body = {year: parseInt(year)};
+    if (month) body.month = parseInt(month);
+    if (day)   body.day   = parseInt(day);
+    const d = await apiFetch('/backtest','POST',body);
+    status.textContent = d.message || 'Backtest started! Watch Telegram for updates.';
+    status.style.color = 'var(--green)';
+  } catch(e) {
+    status.textContent = 'Error: '+e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.textContent = '▶ Start Backtest';
+}
+
+// ── CHART HELPERS ─────────────────────────────────────────────────────────────
+const chartInstances = {};
+
+function drawChart(id, type, labels, data, label, color) {
+  if (chartInstances[id]) chartInstances[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  chartInstances[id] = new Chart(ctx, {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: color+'20',
+        borderWidth: 2,
+        pointRadius: 2,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false}, tooltip:{
+        backgroundColor:'#090d16', borderColor:'#0f2035', borderWidth:1,
+        titleColor:'#a8c4e0', bodyColor:'#a8c4e0',
+        callbacks:{label:ctx=>`₹${ctx.raw?.toLocaleString('en-IN')}`}
+      }},
+      scales: {
+        x:{ticks:{color:'#1e3a52',font:{size:9}},grid:{color:'#0f203520'}},
+        y:{ticks:{color:'#1e3a52',font:{size:9},callback:v=>`₹${(v/1000).toFixed(0)}k`},grid:{color:'#0f203520'}}
+      }
+    }
+  });
+}
+
+function drawBarChart(id, labels, data, colors) {
+  if (chartInstances[id]) chartInstances[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  chartInstances[id] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{display:false}, tooltip:{
+        backgroundColor:'#090d16', borderColor:'#0f2035', borderWidth:1,
+        titleColor:'#a8c4e0', bodyColor:'#a8c4e0',
+        callbacks:{label:ctx=>`₹${ctx.raw?.toLocaleString('en-IN')}`}
+      }},
+      scales: {
+        x:{ticks:{color:'#1e3a52',font:{size:9},maxRotation:45},grid:{color:'#0f203520'}},
+        y:{ticks:{color:'#1e3a52',font:{size:9},callback:v=>`₹${(v/1000).toFixed(0)}k`},grid:{color:'#0f203520'}}
+      }
+    }
+  });
+}
+
+function drawDist(id, wins, losses) {
+  if (chartInstances[id]) chartInstances[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  chartInstances[id] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels:['Wins','Losses'], datasets:[{data:[wins,losses],backgroundColor:['#00e5a080','#ff3d5a80'],borderColor:['#00e5a0','#ff3d5a'],borderWidth:1}] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{labels:{color:'#a8c4e0',font:{size:10}}},
+        tooltip:{backgroundColor:'#090d16',borderColor:'#0f2035',borderWidth:1,titleColor:'#a8c4e0',bodyColor:'#a8c4e0'} }}
+  });
+}
+
+// ── FORMAT HELPERS ────────────────────────────────────────────────────────────
+function fmtPnl(v) {
+  const n = Math.round(v||0);
+  return (n>=0?'+₹':'-₹') + Math.abs(n).toLocaleString('en-IN');
+}
+</script>
 </body>
 </html>

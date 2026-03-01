@@ -62,7 +62,7 @@ import traceback
 load_dotenv()
 
 # ── App setup ─────────────────────────────────────────────────────────────────
-app = Flask(__name__, static_folder='static', static_url_path='/static')
+app = Flask(__name__, static_folder='.', static_url_path='/static')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///paper_trades.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-in-production')
@@ -1213,10 +1213,16 @@ def health():
 # FIX 8: Serve dashboard from /static/dashboard.html
 @app.route('/')
 def index():
+    """Serve the main dashboard HTML from root directory."""
     try:
-        return send_from_directory('static', 'dashboard.html')
-    except Exception:
-        return jsonify({'message': 'Nifty Paper Trader API v2.1 — visit /api/health'}), 200
+        # Try current directory first (works for both local and Render)
+        import os as _os
+        html_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'dashboard.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except Exception as e:
+        logger.error(f"Could not serve dashboard.html: {e}")
+        return jsonify({'message': 'dashboard.html not found — place it next to app.py'}), 200
 
 
 # ══════════════════════════════════════════════════════════════════════════════
